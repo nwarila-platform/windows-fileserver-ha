@@ -1,0 +1,53 @@
+# =========================================================================================== #
+# File: '.github/workflows/codeql.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Scans this repository's GitHub Actions workflows with GitHub's own CodeQL — actions is a
+# first-class CodeQL language (taint tracking through run: blocks including bash,
+# untrusted-input injection, dangerous trigger patterns). PowerShell is NOT a CodeQL
+# language: the org pester-matrix's PSScriptAnalyzer SARIF remains the scanner for
+# scripts/. security-extended query suite; the weekly schedule re-runs new queries against
+# unchanged workflows.
+#
+# =========================================================================================== #
+---
+name: 'CodeQL'
+
+on:
+  pull_request:
+    branches: ['main']
+    paths:
+      - '.github/workflows/**'
+  push:
+    branches: ['main']
+    paths:
+      - '.github/workflows/**'
+  schedule:
+    - cron: '17 6 * * 1'
+
+permissions:
+  contents: 'read'
+
+jobs:
+  analyze:
+    name: 'Analyze GitHub Actions workflows'
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 15
+    permissions:
+      contents: 'read'
+      actions: 'read'
+      security-events: 'write'
+    steps:
+      - uses: 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 'Initialize CodeQL'
+        uses: 'github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd' # v4.37.7
+        with:
+          languages: 'actions'
+          queries: 'security-extended'
+      - name: 'Analyze'
+        uses: 'github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd' # v4.37.7
+        with:
+          category: '/language:actions'
