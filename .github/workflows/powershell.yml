@@ -31,3 +31,6 @@ jobs:
     uses: 'NWarila/powershell-template/.github/workflows/pester-matrix.yaml@feat/pester-pair-harness'
     with:
       scan-path: 'scripts'
+      # Must match the `uses:` ref: the ref selects the workflow file, while template-ref
+      # is what the workflow checks out for the harness and analyzer settings.
+      template-ref: 'feat/pester-pair-harness'
