@@ -1,0 +1,33 @@
+# =========================================================================================== #
+# File: '.github/workflows/powershell.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Thin caller for the organization's standardized PowerShell test suite. Everything of
+# substance lives in NWarila/powershell-template (the single org definition of PowerShell):
+# its reusable pester-matrix workflow discovers every <Name>.ps1 + <Name>.pester.ps1 pair
+# under scripts/ (the generic script home, shared with Python/bash tooling; only .ps1 files
+# participate) and runs one matrix leg per script — house PSScriptAnalyzer settings
+# (custom rules included, zero findings), then the self-contained Pester spec.
+#
+# Runs only when a PowerShell file changes in a pull request. Adopting new organizational
+# tests is a pin bump on the `uses:` line — nothing else in this repository changes.
+#
+# =========================================================================================== #
+---
+name: 'PowerShell'
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/**.ps1'   # script pairs (<Name>.ps1 + <Name>.pester.ps1)
+
+permissions:
+  contents: 'read'
+
+jobs:
+  pester-matrix:
+    # TODO(pin): replace the branch ref with the pinned commit SHA once powershell-template
+    # PR #26 merges — org rule: workflows are consumed only at a pin.
+    uses: 'NWarila/powershell-template/.github/workflows/pester-matrix.yaml@feat/pester-pair-harness'
+    with:
+      scan-path: 'scripts'
