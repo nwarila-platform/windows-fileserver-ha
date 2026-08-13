@@ -32,9 +32,9 @@ jobs:
       checks: 'write'          # report job: check run with per-test results
       pull-requests: 'write'   # report job: sticky results comment on the PR
       security-events: 'write' # test legs: SARIF upload to code scanning
-    uses: 'NWarila/powershell-template/.github/workflows/pester-matrix.yaml@1263015770fde312046817e07a66dc688d6fcaa5' # main (#29)
+    uses: 'NWarila/powershell-template/.github/workflows/pester-matrix.yaml@caae6d5319346ed234d889ed3b5fc90a5ce97d0f' # main (#30)
     with:
       scan-path: 'scripts'
       # Must match the `uses:` ref: the ref selects the workflow file, while template-ref
       # is what the workflow checks out for the harness and analyzer settings.
-      template-ref: '1263015770fde312046817e07a66dc688d6fcaa5' # main (#29)
+      template-ref: 'caae6d5319346ed234d889ed3b5fc90a5ce97d0f' # main (#30)
