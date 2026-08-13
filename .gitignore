@@ -48,6 +48,7 @@
 
 # --- [ allowed: GitHub configuration ] ------------------------------------------------------ #
 !/.github/CODEOWNERS
+!/.github/workflows/codeql.yml
 !/.github/workflows/powershell.yml
 
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
