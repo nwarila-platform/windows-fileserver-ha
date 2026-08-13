@@ -26,6 +26,10 @@ permissions:
 
 jobs:
   pester-matrix:
+    permissions:
+      contents: 'read'
+      checks: 'write'          # report job: check run with per-test results
+      pull-requests: 'write'   # report job: sticky results comment on the PR
     # TODO(pin): replace the branch ref with the pinned commit SHA once powershell-template
     # PR #26 merges — org rule: workflows are consumed only at a pin.
     uses: 'NWarila/powershell-template/.github/workflows/pester-matrix.yaml@feat/pester-pair-harness'
