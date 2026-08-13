@@ -1,0 +1,57 @@
+# =========================================================================================== #
+# File: 'ansible/playbooks/fileserver-aws.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Applies the fileserver role to the ratified five-instance shape on EPHEMERAL EC2: four
+# cluster nodes (fileserver_nodes, two per AZ in us-east-1a/1b) and one non-domain-joined
+# file-share witness (fileserver_witness, third AZ). Runs from the COMPOSED tree only — the
+# deploy workflow overlays this repository's roles into the pinned ansible-framework checkout
+# and executes this playbook against an exact per-run inventory (see ansible/inventory/).
+#
+# The role's current scope (the SMB server baseline) applies to all five instances, so one
+# play targets the union. EP3 splits node-only work (domain join, WSFC bootstrap) into its own
+# play over fileserver_nodes when it lands; the witness must be targetable separately, which
+# is why the two groups exist at all.
+#
+# The framework windows_disk_manager role is deliberately absent: per-node data disks arrive
+# with the shared-volume design (EP4), and a disk layout declared before a disk exists would
+# be a fiction — see docs/explanation/technical-debt.md.
+#
+# =========================================================================================== #
+---
+- name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
+  hosts: 'fileserver_nodes:fileserver_witness'
+  gather_facts: false
+  become: false
+  any_errors_fatal: true
+  vars:
+    ENV: "{{ env }}"
+
+  #region ------ [ Pre-Tasks ] --------------------------------------------------------------- #
+  pre_tasks:
+
+    # The five-instance shape is ratified, so the assertion names the exact expected numbers —
+    # a lower bound would let a half-provisioned fleet converge and report green.
+    - name: 'PRE | Assert The Ratified Five-Instance Shape'
+      run_once: true
+      ansible.builtin.assert:
+        that:
+          - groups['fileserver_nodes'] | default([]) | length == 4
+          - groups['fileserver_witness'] | default([]) | length == 1
+        fail_msg: >-
+          Expected exactly 4 hosts in fileserver_nodes and 1 in fileserver_witness; found
+          {{ groups['fileserver_nodes'] | default([]) | length }} and
+          {{ groups['fileserver_witness'] | default([]) | length }}. The inventory must carry
+          the ratified shape (4 cluster nodes + 1 file-share witness) before anything runs.
+        quiet: true
+
+  #endregion --- [ Pre-Tasks ] --------------------------------------------------------------- #
+
+  #region ------ [ Roles ] ------------------------------------------------------------------- #
+  roles:
+
+    # Converges the SMB baseline via the role's first-class PowerShell scripts, then fails
+    # closed on the unimplemented cluster surface (EP3/EP4) by design.
+    - role: 'fileserver'
+
+  #endregion --- [ Roles ] ------------------------------------------------------------------- #

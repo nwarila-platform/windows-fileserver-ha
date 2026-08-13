@@ -1,0 +1,44 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Converges the file-server node baseline. Complex mutations are first-class PowerShell
+# scripts in files/, executed through ansible.windows.win_powershell: each script owns its own
+# read -> diff -> mutate -> verify cycle and reports deterministic Changed/NoChange through
+# $Ansible, so this task file stays declarative and the play recap stays honest
+# (docs/reference/powershell-style-guide.md).
+#
+# The role currently fails closed at END: WSFC bootstrap (EP3) and shared disks, Storage
+# Replica, and file roles (EP4) are unimplemented, and a host must not be reported converged
+# into an undefined state. Remove the END guard only when the cluster surface lands.
+#
+# =========================================================================================== #
+---
+#region ------ [ Main ] ---------------------------------------------------------------------- #
+
+# The script computes drift itself from live state, so there is no BEGIN probe here: a
+# converged host performs zero mutations and the task reports ok, not changed. Parameters
+# cross as typed module options — never Jinja spliced into the script source — which is what
+# keeps the split_args/injection surface at zero.
+#
+# The referenced .ps1 is MATERIALIZED from powershell/ by scripts/materialize-role-scripts.sh
+# (the role tracks only files/Set-SmbServerHardening.ps1.stub); run it before this role.
+- name: 'MAIN | Converge The SMB Server Hardening Baseline'
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'Set-SmbServerHardening.ps1') }}"
+    parameters:
+      Setting: "{{ fileserver_running.smb.settings }}"
+    error_action: 'stop'
+
+#endregion --- [ Main ] ---------------------------------------------------------------------- #
+
+#region ------ [ End ] ----------------------------------------------------------------------- #
+
+- name: 'END | Refuse To Report A Converged File Server (EP3/EP4 pending)'
+  ansible.builtin.fail:
+    msg: >-
+      The fileserver role converges its SMB baseline only. WSFC bootstrap (EP3) and shared
+      disks, Storage Replica, and clustered file roles (EP4) are not implemented, so this role
+      fails closed rather than reporting a host converged into an undefined state.
+
+#endregion --- [ End ] ----------------------------------------------------------------------- #

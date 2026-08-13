@@ -1,0 +1,28 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Validates the load-bearing fileserver configuration after the v3 loader merge, on the
+# CONTROLLER, before anything touches the guest.
+#
+# Shape only, deliberately: the settings VOCABULARY (whether each key names a real SMB server
+# property) is enforced by Set-SmbServerHardening.ps1 itself, which fails before any mutation
+# on an unknown name against the live property surface — a controller-side word list would
+# just be a stale copy of that surface.
+#
+# =========================================================================================== #
+---
+- name: 'VALIDATE | Require A Non-Empty SMB Baseline Of Well-Formed Property Names'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.smb.settings is mapping
+      - fileserver_running.smb.settings | length > 0
+      - >-
+        fileserver_running.smb.settings.keys()
+        | reject('match', '^[A-Za-z][A-Za-z0-9]*$') | list | length == 0
+    fail_msg: >-
+      Refusing to run: fileserver.smb.settings must be a non-empty map of SMB server
+      configuration property names (letters and digits, starting with a letter) to desired
+      values. An empty or malformed baseline converges nothing and usually means an override
+      replaced the whole 'fileserver:' dict without restating it.
+    quiet: true

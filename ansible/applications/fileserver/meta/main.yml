@@ -1,0 +1,31 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for fileserver. Description-only (style guide §8): NOT an enforcing argument
+# spec. The role's tasks/validate.yml enforces its merged-config guards.
+#
+# REQUIRED INPUTS — none yet. The EP2 scope (SMB server baseline) is fully covered by
+# defaults. EP3 (domain join, WSFC bootstrap) and EP4 (shared disks, Storage Replica, file
+# roles) will add playbook-supplied inputs here as they land: domain FQDN, DNS addresses, a
+# join credential path, witness share path, and per-disk identities. Those are
+# deployment-specific and will never be defaulted.
+# =========================================================================================== #
+---
+galaxy_info:
+  role_name: 'fileserver'
+  namespace: 'nwarila_platform'
+  author: 'nwarila-platform'
+  description: >-
+    Windows Server 2025 highly available file service (WSFC stretch cluster). Currently
+    converges the SMB server hardening baseline and fails closed on the unimplemented cluster
+    surface; WSFC bootstrap, shared storage, Storage Replica, and clustered file roles land in
+    later epics.
+  license: 'MIT'
+  min_ansible_version: '2.17'
+  platforms:
+    - name: 'Windows'
+      versions:
+        - '2025'
+  galaxy_tags: ['windows', 'fileserver', 'cluster']
+
+dependencies: []
