@@ -9,8 +9,10 @@
 # participate) and runs one matrix leg per script — house PSScriptAnalyzer settings
 # (custom rules included, zero findings), then the self-contained Pester spec.
 #
-# Runs only when a PowerShell file changes in a pull request. Adopting new organizational
-# tests is a pin bump on the `uses:` line — nothing else in this repository changes.
+# Runs when a PowerShell file changes in a pull request, and again on the merge to main —
+# the main run is what publishes default-branch artifacts and code-scanning analyses.
+# Adopting new organizational tests is a pin bump on the `uses:` line — nothing else in
+# this repository changes.
 #
 # =========================================================================================== #
 ---
@@ -21,6 +23,12 @@ on:
     paths:
       - 'scripts/**.ps1'                  # script pairs (<Name>.ps1 + <Name>.pester.ps1)
       - '.github/workflows/powershell.yml'  # pin bumps must re-prove the matrix
+  push:
+    branches:
+      - 'main'
+    paths:
+      - 'scripts/**.ps1'
+      - '.github/workflows/powershell.yml'
 
 permissions:
   contents: 'read'
