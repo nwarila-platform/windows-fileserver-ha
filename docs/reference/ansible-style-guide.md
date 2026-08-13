@@ -57,9 +57,8 @@ generation tracked as debt does not exist here.
   generic `main.yml` loader, loader-resolved OS entrypoints, and `validate.yml`; this
   list is exhaustive. Do not add other task files or split an entrypoint with a sibling
   `include_tasks`; an entrypoint that needs splitting signals an over-broad role (§4d).
-- **RATIFIED (Director, 2026-07-31):** Keep `tasks/` flat:
-  `scripts/check-winshell-splitargs.py` scans `applications/*/tasks/*.yml`
-  non-recursively, so a nested task file silently escapes the inline-PowerShell gate.
+- **RATIFIED (Director, 2026-07-31):** Keep `tasks/` flat: static gates over task
+  files scan non-recursively, so a nested task file silently escapes them.
 - Vars overlays: `vars/<family>[_...][_<env>].yml`, recursive combine,
   `list_merge='replace'`. `ENV` is mandatory and regex-validated by the loader.
 
@@ -264,8 +263,7 @@ clobber, verified at the module source). These stay `quiet: true` with an action
   narrows the escape-hatch ladder below: `win_shell` remains legal only for a genuine
   ONE-LINE shell expression, and the OTBS/native-module-template rules for embedded
   blocks now apply to the residue only. Repo wiring:
-  `docs/reference/powershell-style-guide.md`. The `check-winshell-splitargs.py` gate
-  still runs over whatever `win_shell`/`win_command` remains.
+  `docs/reference/powershell-style-guide.md`.
 - **RATIFIED (Director, 2026-07-31):** `ansible.windows.win_reg_stat` with `name:`
   returns `exists: false` for both an absent key and an absent property. To distinguish
   them, read the key without `name:` and test
@@ -337,12 +335,13 @@ clobber, verified at the module source). These stay `quiet: true` with an action
   escapes the quote, unbalances the parser, and fails the task at **LOAD time**
   (`failed at splitting arguments…`). Interior backslashes are fine;
   only backslash-adjacent-to-a-closing-quote breaks. **RULE:** build such strings with `[char]92`
-  (`$dir.TrimEnd([char]92) + [char]92`) and never end a quoted literal with `\`. **GATE:**
-  `scripts/check-winshell-splitargs.py` (run with the ansible-core venv python) fails on any
-  `split_args` error OR any backslash-before-quote across every `win_shell`/`win_command` block — this
-  is the ONLY static check that catches the class: yamllint, ansible-lint, AND
-  `ansible-playbook --syntax-check` all pass an unbalanced-`\'` regression; a measured production
-  escape established the failure mode on 2026-07-17. Part of the standard gate now.
+  (`$dir.TrimEnd([char]92) + [char]92`) and never end a quoted literal with `\`. No standard
+  linter catches the class (yamllint, ansible-lint, AND `ansible-playbook --syntax-check` all
+  pass an unbalanced-`\'` regression; a measured production escape established the failure mode
+  on 2026-07-17). **Enforcement here is INLINE (2026-08-13):** first-class PowerShell scripts
+  removed the multi-statement `win_shell` surface entirely, and any permitted one-liner is
+  reviewed against this rule; the prior generation's `check-winshell-splitargs.py` gate lives
+  on in pdq-deploy-inventory should `win_shell` blocks ever return.
 - **RATIFIED (Director, 2026-08-06) — treat `win_*_info` results as list-shaped contracts.**
   Default list fields with `| default([])`, prove cardinality before `[0]` indexing,
   and quantify over all items. An absent key must neither error nor false-pass, and a

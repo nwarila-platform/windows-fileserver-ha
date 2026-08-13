@@ -8,8 +8,9 @@ are met, not when they stop being inconvenient.
 **Gap:** The workflows, Terraform data, IAM documents, framework pins, composition tooling, and
 the `verify.sh` entry point (the windows-wsus-derived deploy surface) are not yet in this
 repository, so the deploy lifecycle cannot run at all and the quality gates that do exist
-(`scripts/check-powershell.sh`, `scripts/check-winshell-splitargs.py`) are invoked directly
-rather than from one verification entry point.
+(the org pester-matrix via `.github/workflows/powershell.yml`,
+`scripts/materialize-role-scripts.sh --check`) run individually rather than from one
+verification entry point.
 **Containment:** The Ansible/PowerShell tree is authored to the composed-framework contract
 (v3.3.0 loader, `roles_path` by bare name) so the scaffold lands around it without rework; the
 gates run standalone in the meantime.
