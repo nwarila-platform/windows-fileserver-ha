@@ -1,0 +1,83 @@
+# =========================================================================================== #
+# File: '.gitignore'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# DEFAULT-DENY, EXPLICIT INCLUDES ONLY. Nothing in this working tree is tracked unless it is
+# explicitly allowed below, by name — no wildcard allowances. Adding a new file therefore
+# requires allowing it here first — that is deliberate: it makes publishing a file an
+# explicit act rather than an accident.
+#
+# Note the deliberate absence: materialized role scripts (the .ps1 a role stub resolves to,
+# e.g. ansible/applications/fileserver/files/Set-SmbServerHardening.ps1) are build artifacts
+# of scripts/materialize-role-scripts.sh and are never allowlisted. Only the .ps1.stub marker
+# is tracked; the script itself is tracked once, under powershell/.
+#
+# =========================================================================================== #
+
+# Ignore everything ...
+**
+
+# --- [ directory spine ] -------------------------------------------------------------------- #
+# Git does not descend into an excluded directory, so every directory on the path to an
+# allowed file is re-included by name. This publishes no files by itself: files inside these
+# directories stay ignored until named in a section below.
+!/.github/
+!/.github/workflows/
+!/ansible/
+!/ansible/applications/
+!/ansible/applications/fileserver/
+!/ansible/applications/fileserver/defaults/
+!/ansible/applications/fileserver/files/
+!/ansible/applications/fileserver/meta/
+!/ansible/applications/fileserver/tasks/
+!/ansible/applications/fileserver/vars/
+!/ansible/inventory/
+!/ansible/playbooks/
+!/docs/
+!/docs/explanation/
+!/docs/reference/
+!/scripts/
+
+# --- [ allowed: repository configuration ] -------------------------------------------------- #
+!/.editorconfig
+!/.gitignore
+!/.yamllint.yml
+
+# --- [ allowed: top-level documents ] ------------------------------------------------------- #
+!/README.md
+
+# --- [ allowed: GitHub configuration ] ------------------------------------------------------ #
+!/.github/CODEOWNERS
+!/.github/workflows/powershell.yml
+
+# --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
+!/ansible/applications/fileserver/README.md
+!/ansible/applications/fileserver/defaults/main.yml
+!/ansible/applications/fileserver/files/Set-SmbServerHardening.ps1.stub
+!/ansible/applications/fileserver/meta/main.yml
+!/ansible/applications/fileserver/tasks/clean_windows.yml
+!/ansible/applications/fileserver/tasks/main.yml
+!/ansible/applications/fileserver/tasks/present_windows.yml
+!/ansible/applications/fileserver/tasks/validate.yml
+!/ansible/applications/fileserver/vars/windows.yml
+!/ansible/inventory/README.md
+!/ansible/playbooks/fileserver-aws.yml
+
+# --- [ allowed: published documentation ] --------------------------------------------------- #
+# Enumerated: local working notes live alongside these on disk and are never published.
+!/docs/explanation/technical-debt.md
+!/docs/reference/ansible-style-guide.md
+!/docs/reference/powershell-style-guide.md
+
+# --- [ allowed: scripts ] ------------------------------------------------------------------- #
+# The generic script home: PowerShell pairs (one script + one spec — new scripts add both
+# lines together) beside Python/bash tooling.
+!/scripts/Set-SmbServerHardening.ps1
+!/scripts/Set-SmbServerHardening.pester.ps1
+!/scripts/check-winshell-splitargs.py
+!/scripts/materialize-role-scripts.sh
+
+# --- [ never tracked, even by a future allowance ] ------------------------------------------ #
+# Composition build tree (framework checkout + overlaid roles) and build worktrees.
+/.compose/
+/.worktrees/

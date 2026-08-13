@@ -1,0 +1,42 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Lowest-precedence configuration for the fileserver role. The v3 loader merges the OS overlay
+# in vars/ over this map and publishes the result as 'fileserver_running'; tasks read only the
+# merged map, never these keys directly.
+#
+# WHAT BELONGS HERE: values that are universally safe — true for anyone running this role,
+# whatever their account or site. The SMB hardening baseline below is this repository's declared
+# security posture, not a site value; a site that must interoperate with legacy clients
+# overrides individual keys through the 'fileserver:' dict.
+#
+# WHAT DOES NOT: anything deployment-specific. Domain identity, DNS, witness paths, and shared
+# disk identities arrive with EP3/EP4 and will be supplied by the PLAYBOOK, described in
+# meta/main.yml, and enforced by tasks/validate.yml — never defaulted here.
+#
+# =========================================================================================== #
+---
+fileserver_defaults:
+
+  #region ------ [ SMB server baseline ] ----------------------------------------------------- #
+
+  smb:
+    # Property-name -> desired-value pairs consumed verbatim by Set-SmbServerHardening.ps1.
+    # Every key must be a Get/Set-SmbServerConfiguration property; the script fails BEFORE any
+    # mutation on an unknown name, so validate.yml only enforces the map's shape, not its
+    # vocabulary.
+    settings:
+      # SMB1 is remove-not-disable territory, but the protocol switch is the part the SMB
+      # server owns; the feature removal is a separate concern with its own reboot semantics.
+      EnableSMB1Protocol: false
+      # Signing and encryption are cheap on SMB3 with modern clients, and every intended
+      # consumer of this cluster is SMB3-capable (PRD: Windows Server 2025 nodes).
+      RequireSecuritySignature: true
+      EncryptData: true
+      RejectUnencryptedAccess: true
+      # Audit any straggler attempting SMB1 so the override decision, if ever needed, is made
+      # on evidence rather than on a helpdesk anecdote.
+      AuditSmb1Access: true
+
+  #endregion --- [ SMB server baseline ] ----------------------------------------------------- #
