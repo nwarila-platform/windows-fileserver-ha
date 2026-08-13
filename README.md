@@ -47,7 +47,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring. |
 | `docs/explanation/` | Technical debt with exit criteria. |
-| `scripts/` | The generic script home: PowerShell pairs (`.ps1` + `.pester.ps1`), Python and bash tooling (`materialize-role-scripts.sh`, `check-winshell-splitargs.py`). |
+| `scripts/` | The generic script home: PowerShell pairs (`.ps1` + `.pester.ps1`) beside build tooling (`materialize-role-scripts.sh`). |
 
 ## Quality gates
 

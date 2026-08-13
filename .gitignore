@@ -74,7 +74,6 @@
 # lines together) beside Python/bash tooling.
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
-!/scripts/check-winshell-splitargs.py
 !/scripts/materialize-role-scripts.sh
 
 # --- [ never tracked, even by a future allowance ] ------------------------------------------ #
