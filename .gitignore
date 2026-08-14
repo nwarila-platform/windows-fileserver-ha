@@ -76,6 +76,7 @@
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
 !/scripts/materialize-role-scripts.sh
+!/scripts/verify.sh
 
 # --- [ never tracked, even by a future allowance ] ------------------------------------------ #
 # Composition build tree (framework checkout + overlaid roles) and build worktrees.
