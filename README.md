@@ -47,17 +47,17 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring. |
 | `docs/explanation/` | Technical debt with exit criteria. |
-| `scripts/` | The generic script home: PowerShell pairs (`.ps1` + `.pester.ps1`) beside build tooling (`materialize-role-scripts.sh`). |
+| `scripts/` | PowerShell pairs (`.ps1` + `.pester.ps1`) plus the materialization and local-verification entry points. |
 
 ## Quality gates
 
-```sh
-# The org PowerShell suite (what CI runs), from a powershell-template checkout:
-pwsh -File <powershell-template>/harness/Invoke-PairTests.ps1 -Path scripts
+Install Bash, `yamllint`, `pwsh` with Pester v5+, and PSScriptAnalyzer. Replace
+`<powershell-template>` below with the absolute path to a complete checkout at the `template-ref`
+pinned in `.github/workflows/powershell.yml`. From the repository root, run the resulting command:
 
-./scripts/materialize-role-scripts.sh --check   # every role stub resolves and is current
-yamllint -c .yamllint.yml ansible
+```sh
+POWERSHELL_TEMPLATE_ROOT=<powershell-template> ./scripts/verify.sh
 ```
 
-The remaining gates (composed-tree ansible-lint, workflow and IAM checks, `verify.sh`)
-arrive with the deploy scaffold.
+The composed-tree `ansible-lint`, deploy-workflow checks, and IAM checks remain pending with the
+deploy scaffold.
