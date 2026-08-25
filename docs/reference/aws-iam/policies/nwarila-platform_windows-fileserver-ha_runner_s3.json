@@ -1,0 +1,47 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadWriteOnlyTheStateFileAndItsLock",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::<account-id>-terraform/nwarila-platform/windows-fileserver-ha/aws-poc.tfstate",
+        "arn:aws:s3:::<account-id>-terraform/nwarila-platform/windows-fileserver-ha/aws-poc.tfstate.tflock"
+      ]
+    },
+    {
+      "Sid": "ListOnlyThoseTwoKeys",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<account-id>-terraform",
+      "Condition": {
+        "StringEquals": {
+          "s3:prefix": [
+            "nwarila-platform/windows-fileserver-ha/aws-poc.tfstate",
+            "nwarila-platform/windows-fileserver-ha/aws-poc.tfstate.tflock"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyTheNetworkAndDirectoryArtifacts",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::<account-id>-apprepo/OpenVPN.net/OpenVPN Community/*/OpenVPN_Community_amd64.msi",
+        "arn:aws:s3:::<account-id>-ansible/applications/openvpn/aws-ec2-test.ovpn",
+        "arn:aws:s3:::<account-id>-ansible/roles/domain_member/svc-domainjoin-password.txt"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceAccount": "<account-id>"
+        }
+      }
+    }
+  ]
+}
