@@ -5,17 +5,16 @@ are met, not when they stop being inconvenient.
 
 ## TD-001 — The deploy scaffold is incomplete
 
-**Gap:** The deploy workflows, Terraform data, framework pins, and composition tooling are not yet
-in this repository, so the deploy lifecycle cannot run at all.
+**Gap:** The deploy workflows and Terraform data are not yet in this repository, so the deploy
+lifecycle cannot run at all.
 `scripts/verify.sh` now runs the three contributor-local gates (`yamllint`, the org PowerShell
 pair suite, and `scripts/materialize-role-scripts.sh --check`) through one entry point, but the
-composed-tree lint, deploy-workflow checks, and IAM checks remain unavailable.
+deploy-workflow checks and IAM checks remain unavailable.
 **Containment:** The Ansible/PowerShell tree is authored to the composed-framework contract
 (v3.3.0 loader, `roles_path` by bare name) so the scaffold lands around it without rework; the
-available local gates run through `scripts/verify.sh` in the meantime.
-**Exit:** The framework pins, composition tooling, deploy workflows, Terraform data, and remaining
-five-instance assertions land. `scripts/verify.sh` also gains the composed-tree lint,
-deploy-workflow checks, and IAM checks.
+contributor-local gates run through `scripts/verify.sh` in the meantime.
+**Exit:** The deploy workflows, Terraform data, and remaining five-instance assertions land.
+`scripts/verify.sh` also gains the deploy-workflow checks and IAM checks.
 
 ## TD-002 — No domain, and the cluster cannot converge without one
 
