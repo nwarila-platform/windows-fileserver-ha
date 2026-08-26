@@ -1,0 +1,39 @@
+---
+plugin: amazon.aws.aws_ec2
+
+regions: [ us-east-1 ]
+
+filters:
+  instance-state-name: running
+  'tag:RepositoryId': "{{ lookup('ansible.builtin.env', 'GITHUB_REPOSITORY_ID') }}"
+  'tag:RunId': "{{ lookup('ansible.builtin.env', 'GITHUB_RUN_ID') }}"
+  'tag:Environment': test
+  'tag:Repository': "{{ lookup('ansible.builtin.env', 'GITHUB_REPOSITORY') }}"
+
+hostnames: [ instance-id ]
+
+strict: true
+
+groups:
+  fileserver_nodes: "aws_ec2_tags.Function | default('') == 'Windows File Server (Cluster Node)'"
+  fileserver_witness: "aws_ec2_tags.Function | default('') == 'Windows File Server (Witness)'"
+
+# Namespace every attribute this plugin publishes. Without it the plugin exposes a host variable
+# named 'state' — the EC2 instance state — which collides with the role input of the same name that
+# selects present_windows.yml or clean_windows.yml. Prefixing removes the collision at the source
+# rather than relying on each caller to override it, and it protects any future generic name too.
+#
+# The prefix is applied BEFORE 'compose' evaluates, so expressions below read the prefixed names.
+# Host names are resolved from the raw instance data and are unaffected, as are the AWS-side filters.
+hostvars_prefix: 'aws_'
+
+compose:
+  ansible_host: aws_public_ip_address
+  ansible_connection: "'ssh'"
+  ansible_user: "'Administrator'"
+  ansible_shell_type: "'cmd'"
+  ansible_ssh_private_key_file: "lookup('ansible.builtin.env', 'CI_PRIVATE_KEY')"
+  # Keepalive: the settings settle poll waits minutes for the product to persist a fresh install's
+  # edits, running quiet with no SSH traffic. Without this the idle direct-SSH connection times
+  # out and the result is lost as UNREACHABLE. 30s x 20 keeps it alive past the 600s settle deadline.
+  ansible_ssh_common_args: "'-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=20'"
