@@ -9,8 +9,8 @@ frameworks.
 ## Status
 
 Scaffold in progress. The Ansible tree, the PowerShell development model, and their quality
-gates are in place; the deploy surface (workflows, Terraform data, IAM documents, framework
-pins) and the cluster implementation (EP3/EP4) are not — the application role **fails closed**
+gates are in place; the deploy surface (workflows, Terraform data, and framework pins) and the
+cluster implementation (EP3/EP4) are not — the application role **fails closed**
 until they land. The domain is owner-supplied and currently absent, which blocks any green
 cluster. Every gap is recorded with exit criteria in
 [docs/explanation/technical-debt.md](docs/explanation/technical-debt.md).
@@ -45,7 +45,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | `ansible/playbooks/fileserver-aws.yml` | Applies the role to the ratified five-instance shape (4 nodes + 1 witness) and asserts it exactly. |
 | `ansible/inventory/` | Why there is no static inventory, and the group contract (`fileserver_nodes`, `fileserver_witness`) a generated one must satisfy. |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
-| `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring. |
+| `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring, plus AWS IAM reference documents. |
 | `docs/explanation/` | Technical debt with exit criteria. |
 | `scripts/` | PowerShell pairs (`.ps1` + `.pester.ps1`) plus the materialization and local-verification entry points. |
 
