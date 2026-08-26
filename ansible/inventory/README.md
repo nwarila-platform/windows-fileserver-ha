@@ -8,8 +8,8 @@ produced it ended.
 
 The tracked `aws_ec2.yml` dynamic plugin is the inventory. Its live EC2 tag filters use values
 GitHub exports to select one repository and run, then it assigns matching instances to groups by
-their EC2 `Function` tag. Cluster nodes must carry `Windows File Server (Cluster Node)`; the
-witness must carry `Windows File Server (Witness)`. The Terraform region that must stamp those
+their EC2 `Function` tag. Cluster nodes must carry `Windows HA FileServer`; the
+witness must carry `Windows FS Witness`. The Terraform region that must stamp those
 tags has not landed yet.
 
 ## The ratified shape the inventory must carry
