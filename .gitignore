@@ -43,6 +43,7 @@
 
 # --- [ allowed: repository configuration ] -------------------------------------------------- #
 !/.editorconfig
+!/.framework-pin
 !/.gitignore
 !/.yamllint.yml
 
@@ -90,6 +91,7 @@
 # lines together) beside Python/bash tooling.
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
+!/scripts/compose-and-run.sh
 !/scripts/materialize-role-scripts.sh
 !/scripts/verify.sh
 

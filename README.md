@@ -9,7 +9,7 @@ frameworks.
 ## Status
 
 Scaffold in progress. The Ansible tree, the PowerShell development model, and their quality
-gates are in place; the deploy surface (workflows, Terraform data, and framework pins) and the
+gates are in place; the deploy surface (workflows and Terraform data) and the
 cluster implementation (EP3/EP4) are not — the application role **fails closed**
 until they land. The domain is owner-supplied and currently absent, which blocks any green
 cluster. Every gap is recorded with exit criteria in
@@ -59,5 +59,5 @@ pinned in `.github/workflows/powershell.yml`. From the repository root, run the 
 POWERSHELL_TEMPLATE_ROOT=<powershell-template> ./scripts/verify.sh
 ```
 
-The composed-tree `ansible-lint`, deploy-workflow checks, and IAM checks remain pending with the
+The deploy-workflow checks and IAM checks remain pending with the
 deploy scaffold.
