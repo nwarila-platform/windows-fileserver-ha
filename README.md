@@ -43,7 +43,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
 | `ansible/playbooks/fileserver-aws.yml` | Applies the role to the ratified five-instance shape (4 nodes + 1 witness) and asserts it exactly. |
-| `ansible/inventory/` | Why there is no static inventory, and the group contract (`fileserver_nodes`, `fileserver_witness`) a generated one must satisfy. |
+| `ansible/inventory/` | The tracked EC2 dynamic inventory, why no static inventory is used, and its group contract (`fileserver_nodes`, `fileserver_witness`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring, plus AWS IAM reference documents. |
 | `docs/explanation/` | Technical debt with exit criteria. |

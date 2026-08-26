@@ -66,6 +66,7 @@
 !/ansible/applications/fileserver/tasks/validate.yml
 !/ansible/applications/fileserver/vars/windows.yml
 !/ansible/inventory/README.md
+!/ansible/inventory/aws_ec2.yml
 !/ansible/playbooks/fileserver-aws.yml
 
 # --- [ allowed: published documentation ] --------------------------------------------------- #
