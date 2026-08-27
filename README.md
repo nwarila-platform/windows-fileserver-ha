@@ -8,10 +8,10 @@ frameworks.
 
 ## Status
 
-Scaffold in progress. The Ansible tree, the PowerShell development model, and their quality
-gates are in place; the deploy surface (workflows and Terraform data) and the
-cluster implementation (EP3/EP4) are not — the application role **fails closed**
-until they land. The domain is owner-supplied and currently absent, which blocks any green
+Scaffold in progress. The Ansible tree, the PowerShell development model, their quality
+gates, and the deploy surface are in place; the cluster implementation (EP3/EP4) is not —
+the application role **fails closed** until it lands. The domain is owner-supplied and
+currently absent, which blocks any green
 cluster. Every gap is recorded with exit criteria in
 [docs/explanation/technical-debt.md](docs/explanation/technical-debt.md).
 
@@ -59,5 +59,10 @@ pinned in `.github/workflows/powershell.yml`. From the repository root, run the 
 POWERSHELL_TEMPLATE_ROOT=<powershell-template> ./scripts/verify.sh
 ```
 
-The deploy-workflow checks and IAM checks remain pending with the
-deploy scaffold.
+The deployment files have their own static gates:
+
+```sh
+terraform fmt -check terraform/aws.tfvars
+yamllint -c .yamllint.yml .github/workflows/aws-deploy.yml
+actionlint .github/workflows/aws-deploy.yml
+```
