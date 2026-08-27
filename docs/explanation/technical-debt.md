@@ -3,18 +3,14 @@
 Every known gap, its containment, and its exit criteria. Entries close when the exit criteria
 are met, not when they stop being inconvenient.
 
-## TD-001 — The deploy scaffold is incomplete
+## TD-001 — Deploy checks are outside the contributor-local verifier
 
-**Gap:** The deploy workflows and Terraform data are not yet in this repository, so the deploy
-lifecycle cannot run at all.
-`scripts/verify.sh` now runs the three contributor-local gates (`yamllint`, the org PowerShell
-pair suite, and `scripts/materialize-role-scripts.sh --check`) through one entry point, but the
-deploy-workflow checks and IAM checks remain unavailable.
-**Containment:** The Ansible/PowerShell tree is authored to the composed-framework contract
-(v3.3.0 loader, `roles_path` by bare name) so the scaffold lands around it without rework; the
-contributor-local gates run through `scripts/verify.sh` in the meantime.
-**Exit:** The deploy workflows, Terraform data, and remaining five-instance assertions land.
-`scripts/verify.sh` also gains the deploy-workflow checks and IAM checks.
+**Gap:** `scripts/verify.sh` runs the three existing contributor-local gates (`yamllint`, the org
+PowerShell pair suite, and `scripts/materialize-role-scripts.sh --check`) through one entry point,
+but it does not run the deploy workflow's Terraform-format, workflow-lint, or IAM checks.
+**Containment:** The deploy files are checked directly with `terraform fmt -check`, `yamllint`,
+and `actionlint`; the IAM reference documents remain reviewable in their tracked form.
+**Exit:** `scripts/verify.sh` gains the deploy-workflow checks and IAM checks.
 
 ## TD-002 — No domain, and the cluster cannot converge without one
 
@@ -29,13 +25,12 @@ guessed destination.
 **Exit:** Owner supplies the domain inputs; EP3 lands domain join and WSFC bootstrap and
 removes the fail-closed guard.
 
-## TD-003 — Per-node and shared storage is unmodeled
+## TD-003 — Shared storage is not adopted in the guest
 
-**Gap:** The per-AZ io2 Multi-Attach shared volumes and per-node data-disk layouts are absent:
-the pinned Terraform framework cannot express shared volumes, and a disk layout declared before
-EP4's storage design would be a fiction. The playbook therefore composes no
-`windows_disk_manager` entry yet.
+**Gap:** Terraform provisions one io2 Multi-Attach volume per node pair, but the playbook has no
+guest disk layout and the role does not yet enable NVMe persistent reservations or adopt the
+shared volumes. The playbook therefore composes no `windows_disk_manager` entry yet.
 **Containment:** Noted in the playbook header; the role's storage-dependent surface is behind
 the TD-002 fail-closed guard anyway.
-**Exit:** EP4 lands the storage design on a framework pin that carries `all_volumes`, and the
-playbook declares the disk layout through `windows_disk_manager`.
+**Exit:** EP4 enables persistent reservations, adopts the shared volumes without reformatting,
+and declares the disk layout through `windows_disk_manager`.

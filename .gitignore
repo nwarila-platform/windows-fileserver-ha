@@ -40,6 +40,7 @@
 !/docs/reference/aws-iam/policies/
 !/docs/reference/aws-iam/roles/
 !/scripts/
+!/terraform/
 
 # --- [ allowed: repository configuration ] -------------------------------------------------- #
 !/.editorconfig
@@ -49,11 +50,16 @@
 
 # --- [ allowed: top-level documents ] ------------------------------------------------------- #
 !/README.md
+!/quality-tools.env
+!/requirements-quality.txt
+!/requirements-quality.yml
 
 # --- [ allowed: GitHub configuration ] ------------------------------------------------------ #
 !/.github/CODEOWNERS
+!/.github/workflows/aws-deploy.yml
 !/.github/workflows/codeql.yml
 !/.github/workflows/powershell.yml
+!/.github/terraform-framework-pin
 
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
 !/ansible/applications/fileserver/README.md
@@ -95,6 +101,9 @@
 !/scripts/compose-and-run.sh
 !/scripts/materialize-role-scripts.sh
 !/scripts/verify.sh
+
+# --- [ allowed: terraform (data-only; resources live in the pinned framework) ] -------------- #
+!/terraform/aws.tfvars
 
 # --- [ never tracked, even by a future allowance ] ------------------------------------------ #
 # Composition build tree (framework checkout + overlaid roles) and build worktrees.
