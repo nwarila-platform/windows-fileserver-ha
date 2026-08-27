@@ -64,6 +64,7 @@
 !/.github/workflows/codeql.yml
 !/.github/workflows/powershell.yml
 !/.github/workflows/quality.yml
+!/.github/renovate.json5
 !/.github/terraform-framework-pin
 
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
