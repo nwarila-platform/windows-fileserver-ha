@@ -12,7 +12,7 @@
 #   3. Runs the selected playbook with the framework's ansible.cfg as the chassis
 #      (its roles_path resolves roles by bare name).
 #
-# Usage: scripts/compose-and-run.sh [any ansible-playbook arguments...]
+# Usage: scripts/compose-and-run.sh [-e env=dev] [any extra ansible-playbook args...]
 #        COMPOSE_PLAYBOOK=<name>.yml to select a playbook under ansible/playbooks/ (default fileserver-aws.yml).
 #        COMPOSE_INVENTORY=<path> to select a repository-relative inventory file.
 #
@@ -121,6 +121,13 @@ git -C "${FRAMEWORK_DIR}" fetch --quiet origin
 git -C "${FRAMEWORK_DIR}" checkout --quiet --detach "${PIN}"
 echo ">> Framework pinned at $(git -C "${FRAMEWORK_DIR}" rev-parse --short HEAD)"
 
+# The framework's own roles track only files/<Name>.ps1.stub, so their scripts must be
+# materialized in the checkout. This runs BEFORE the overlay because that materializer validates
+# every stub it finds, and this repository's roles resolve their sources from this repository.
+if [ -x "${FRAMEWORK_DIR}/scripts/materialize-role-scripts.sh" ]; then
+    (cd "${FRAMEWORK_DIR}" && ./scripts/materialize-role-scripts.sh)
+fi
+
 # --- 2. Overlay roles into the framework namespace ------------------------------------------ #
 shopt -s nullglob
 role_sources=("${REPO_ROOT}"/ansible/applications/*)
@@ -176,23 +183,6 @@ for role_source in "${role_sources[@]}"; do
 
     validated_roles+=("${role_name}")
 done
-
-# --- 1b. Clear this repository's previous overlay before the framework materializes ---------- #
-# The framework's materializer scans EVERY role under applications/, including one this repository
-# overlaid on an earlier run, and resolves its .ps1.stub against the FRAMEWORK root — where this
-# repository's scripts/ does not exist — so it fails closed and no second compose can run. The
-# removal is confined to the disposable checkout this script creates, and pass 1 has already
-# refused every destination with framework-tracked content.
-for role_name in "${validated_roles[@]}"; do
-    rm -rf "${FRAMEWORK_DIR}/applications/${role_name}"
-done
-
-# The framework's own roles track only files/<Name>.ps1.stub, so their scripts must be
-# materialized in the checkout. This runs BEFORE the overlay because that materializer validates
-# every stub it finds, and this repository's roles resolve their sources from this repository.
-if [ -x "${FRAMEWORK_DIR}/scripts/materialize-role-scripts.sh" ]; then
-    (cd "${FRAMEWORK_DIR}" && ./scripts/materialize-role-scripts.sh)
-fi
 
 # Pass 2 — overlay only after every candidate has passed.
 for role_name in "${validated_roles[@]}"; do
