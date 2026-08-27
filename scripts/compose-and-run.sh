@@ -12,7 +12,7 @@
 #   3. Runs the selected playbook with the framework's ansible.cfg as the chassis
 #      (its roles_path resolves roles by bare name).
 #
-# Usage: scripts/compose-and-run.sh [-e env=dev] [any extra ansible-playbook args...]
+# Usage: scripts/compose-and-run.sh [any ansible-playbook arguments...]
 #        COMPOSE_PLAYBOOK=<name>.yml to select a playbook under ansible/playbooks/ (default fileserver-aws.yml).
 #        COMPOSE_INVENTORY=<path> to select a repository-relative inventory file.
 #

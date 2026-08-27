@@ -8,11 +8,10 @@ frameworks.
 
 ## Status
 
-Scaffold in progress. The Ansible tree, the PowerShell development model, their quality
-gates, and the deploy surface are in place; the cluster implementation (EP3/EP4) is not —
-the application role **fails closed** until it lands. The domain is owner-supplied and
-currently absent, which blocks any green
-cluster. Every gap is recorded with exit criteria in
+Scaffold in progress. The Ansible tree, the PowerShell development model, their quality gates,
+the guest and domain preparation chain, and the deploy surface are in place; live convergence of
+that chain remains to be proven, and the cluster implementation is not — the application role
+**fails closed** until it lands. Every gap is recorded with exit criteria in
 [docs/explanation/technical-debt.md](docs/explanation/technical-debt.md).
 
 ## The PowerShell development model
@@ -42,7 +41,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | Path | Contents |
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
-| `ansible/playbooks/fileserver-aws.yml` | Applies the role to the ratified five-instance shape (4 nodes + 1 witness) and asserts it exactly. |
+| `ansible/playbooks/fileserver-aws.yml` | Asserts the ratified five-instance shape, prepares every guest, prepares the four domain members and their shared disks, then applies the fileserver role. |
 | `ansible/inventory/` | The tracked EC2 dynamic inventory, why no static inventory is used, and its group contract (`fileserver_nodes`, `fileserver_witness`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring, plus AWS IAM reference documents. |
