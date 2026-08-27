@@ -2,32 +2,46 @@
 
 ## There is no static inventory, and that is deliberate
 
-The AWS deploy is **ephemeral**: every run creates the five instances, converges them, and
-destroys them. An instance id written into a file here would be wrong the moment the run that
-produced it ended.
+The AWS deploy is **ephemeral**: every run creates a new instance, converges it, and destroys it.
+An instance id written into a file here would be wrong the moment the run that produced it ended.
 
-The tracked `aws_ec2.yml` dynamic plugin is the inventory. Its live EC2 tag filters use values
-GitHub exports to select one repository and run, then it assigns matching instances to groups by
-their EC2 `Function` tag. Cluster nodes must carry `Windows HA FileServer`; the
-witness must carry `Windows FS Witness`. The Terraform region that must stamp those
-tags is `terraform/aws.tfvars`.
+## `aws_ec2.yml` — one run's instance, describing itself
 
-## The ratified shape the inventory must carry
+The file is in two parts. The first is the only part that is about this repository: the region, the
+four tag filters that select one run's instance — `RepositoryId`, `RunId` and `Repository` from the
+workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and the `fileserver_nodes` / `fileserver_witness`
+group the play addresses. Everything below that is carried unchanged by any repository deploying a
+host this way.
 
-Two groups, five hosts, always exact:
+Hosts are named by their **Name tag**, which is the hostname Terraform declares, so
+`inventory_hostname` is the system's own name and nothing downstream has to be told it again. Every
+attribute the plugin publishes is namespaced with `aws_`, which keeps the EC2 instance `state` from
+colliding with the role input that selects `present_windows.yml` or `absent_windows.yml`.
 
-| Group | Hosts | Why a separate group |
-|---|---|---|
-| `fileserver_nodes` | `tcnaw-hafs01a`, `tcnaw-hafs02a`, `tcnaw-hafs01b`, `tcnaw-hafs02b` | The WSFC cluster nodes (two per AZ). EP3 node-only work (domain join, cluster bootstrap) targets this group alone. |
-| `fileserver_witness` | `tcnaw-witnes01c` | Non-domain-joined file-share witness in a third AZ. Must never be swept into node-only plays. |
+## Everything else is derived from the instance
 
-`ansible/playbooks/fileserver-aws.yml` runs its contract on implicit localhost before any role.
-It rejects an empty or partial result, any host outside the two known groups, and any shape other
-than exactly four cluster nodes plus one witness.
+| Value | Derived from |
+|---|---|
+| Operating system, login account, shell type | `platform_details`, which every instance carries and which names the platform it is licensed as |
+| Connection, port, address, SSM proxy | the `Connection` tag |
+| `ENV` (the framework loader's input) | the `Environment` tag |
+| Private key | `CI_PRIVATE_KEY` when the workflow staged one, else the account key pair |
+
+The `Connection` tag takes four values, and absent means `ssh-direct`:
+
+| Value | Reaches the host by |
+|---|---|
+| `ssh-direct` | SSH to the routable address on 22 |
+| `ssh-ssm` | SSH to the instance id, tunnelled by an SSM `ProxyCommand`; needs no inbound rule |
+| `winrm-direct` | WinRM over HTTPS to the routable address on 5986 |
+| `winrm-ssm` | WinRM over HTTPS to a local port an SSM port-forwarding session already holds open |
+
+A WinRM leg also needs a password, because WinRM has no key authentication; the SSH legs
+authenticate with the key pair.
 
 ## Running the playbook by hand
 
-While a run's instances still exist, export that run's required environment variables, point
-`-i` at the tracked `ansible/inventory/aws_ec2.yml`, and pass `aws_account_id` and `aws_region`
-as extra-vars. The inventory composes uppercase `ENV` directly from each instance's Environment
-tag; lowercase `env` is not a playbook input.
+Export `GITHUB_REPOSITORY_ID`, `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` plus AWS credentials, then
+point `-i` at `aws_ec2.yml` while the instance still exists. Set `ENVIRONMENT` if the deployment is
+not the default `test`. The play asserts its ownership contract, so a run whose tags do not match
+fails closed.

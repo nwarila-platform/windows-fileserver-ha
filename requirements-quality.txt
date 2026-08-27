@@ -1,5 +1,6 @@
 # Fully resolved on Python 3.12/Linux. Every package is exact so a clean runner cannot silently
-# select a newer transitive dependency.
+# select a newer transitive dependency. Renovate groups this manifest for review; the exact
+# quality-tools.env version/checksum tuples remain manual under TD-007.
 ansible-compat==26.6.0
 ansible-core==2.21.2
 ansible-lint==26.6.0

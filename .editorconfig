@@ -33,13 +33,6 @@ indent_style = space
 indent_size = 2
 
 # ---------------------------------------------------------------------------
-# PowerShell — 4-space OTBS per the PowerShell style guide; ASCII-safe UTF-8
-# ---------------------------------------------------------------------------
-[*.{ps1,psm1,psd1}]
-indent_style = space
-indent_size = 4
-
-# ---------------------------------------------------------------------------
 # Markdown — preserve trailing spaces (line breaks) but trim blank lines
 # ---------------------------------------------------------------------------
 [*.md]

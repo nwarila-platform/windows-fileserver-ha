@@ -1,5 +1,5 @@
 ---
-# Collections used by the composed application + pinned framework tree.
+# Collections used while linting the composed application + pinned framework tree.
 collections:
   - name: amazon.aws
     version: '11.4.0'

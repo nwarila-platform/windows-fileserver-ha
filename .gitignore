@@ -49,7 +49,10 @@
 !/.yamllint.yml
 
 # --- [ allowed: top-level documents ] ------------------------------------------------------- #
+!/AGENTS.md
+!/LICENSE
 !/README.md
+!/SECURITY.md
 !/quality-tools.env
 !/requirements-quality.txt
 !/requirements-quality.yml
@@ -59,6 +62,7 @@
 !/.github/workflows/aws-deploy.yml
 !/.github/workflows/codeql.yml
 !/.github/workflows/powershell.yml
+!/.github/workflows/quality.yml
 !/.github/terraform-framework-pin
 
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #

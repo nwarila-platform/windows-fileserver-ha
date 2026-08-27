@@ -5,8 +5,8 @@
 # Terraform is DATA-ONLY here (a plain tfvars, no .tf files); resources live in the pinned
 # aws-terraform-framework, configuration in the pinned ansible-framework + this repo's role.
 #
-#   * AWS credentials are issued only to this workflow at refs/heads/main. Pull-request workflows
-#     remain credential-free; feature-branch workflow code never reaches AWS.
+#   * AWS credentials are issued only to this workflow at refs/heads/main. Pull requests use
+#     the credential-free quality workflow; feature-branch workflow code never reaches AWS.
 #   * Reachability: direct SSH to a subnet-assigned public IPv4. At runtime the framework adds
 #     one run-scoped security group to every interface, sourced from the runner's validated
 #     public IPv4 and, when an operator hostname is configured, from the address it resolves to
@@ -343,13 +343,10 @@ jobs:
             rsync -a --delete "${role_source}/" "${framework_dir}/applications/${role_name}/"
           done
 
-      # Readiness and configuration live in the playbook. The EC2 inventory plugin filters live
-      # AWS instances to this repository and run before exposing the five intended targets.
-      #
-      # The role currently fails closed on the unimplemented cluster surface. The hold is
-      # deliberately gated on Terraform apply rather than this step so the proof bed remains
-      # available for development.
-      - name: Run the file server playbook
+      # Readiness, configuration and the application proof all live in the playbook. The EC2
+      # inventory plugin filters live AWS instances to this repository and run before exposing
+      # one target. The budget guards against a hung converge without cutting a working one short.
+      - name: Run the application playbook
         timeout-minutes: 60
         working-directory: .frameworks/ansible-framework
         env:
@@ -359,7 +356,7 @@ jobs:
           # extra-var below because the play requires it; same value the OIDC role ARN uses.
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
           # NOT extra-vars: the dynamic inventory reads these from the environment to pick this
-          # run's instances, and a lookup('env') has no command-line equivalent.
+          # run's instance, and a lookup('env') has no command-line equivalent.
           GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
           GITHUB_RUN_ID: ${{ github.run_id }}
         run: |
@@ -368,19 +365,9 @@ jobs:
           ansible-playbook "${GITHUB_WORKSPACE}/ansible/playbooks/fileserver-aws.yml" \
             --extra-vars aws_account_id="${AWS_ACCOUNT_ID}"                    \
             --extra-vars aws_region="${AWS_REGION}"                            \
+            --extra-vars env=test                                              \
             --extra-vars state=present                                         \
             --inventory "${GITHUB_WORKSPACE}/ansible/inventory/aws_ec2.yml"
-
-      # A bounded playbook run can consume most of the initial session, so refresh before the
-      # lifecycle tail rather than relying on whatever remains of it.
-      - name: Refresh AWS credentials after the playbook (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.DEPLOY_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-          allowed-account-ids: ${{ secrets.AWS_ACCOUNT_ID }}
-          role-session-name: aws-deploy-${{ github.run_id }}-post-playbook
-          role-duration-seconds: 3600
 
       - name: Hold the converged guest for interactive work
         if: >-
