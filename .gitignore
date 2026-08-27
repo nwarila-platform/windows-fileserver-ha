@@ -60,6 +60,7 @@
 # --- [ allowed: GitHub configuration ] ------------------------------------------------------ #
 !/.github/CODEOWNERS
 !/.github/workflows/aws-deploy.yml
+!/.github/workflows/aws-reaper.yml
 !/.github/workflows/codeql.yml
 !/.github/workflows/powershell.yml
 !/.github/workflows/quality.yml
