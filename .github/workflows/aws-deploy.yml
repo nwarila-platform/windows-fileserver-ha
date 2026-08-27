@@ -368,7 +368,6 @@ jobs:
           ansible-playbook "${GITHUB_WORKSPACE}/ansible/playbooks/fileserver-aws.yml" \
             --extra-vars aws_account_id="${AWS_ACCOUNT_ID}"                    \
             --extra-vars aws_region="${AWS_REGION}"                            \
-            --extra-vars env=test                                              \
             --extra-vars state=present                                         \
             --inventory "${GITHUB_WORKSPACE}/ansible/inventory/aws_ec2.yml"
 

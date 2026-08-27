@@ -32,7 +32,7 @@ all_systems = [
   # Cluster pair A: two nodes in one subnet and Availability Zone.
   {
     region            = "us_east_1"
-    hostname          = "fs-node-a1"
+    hostname          = "tcnaw-hafs01a"
     availability_zone = "us-east-1a"
     subnet_id         = "subnet-0dbb7770d19f253ad"
     # The framework CONSUMES key pairs and never creates them. The private half exists only in
@@ -79,7 +79,7 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "fs-node-a1 CI firewall"
+        description     = "tcnaw-hafs01a CI firewall"
         interface_type  = null
         private_ip      = null
         security_groups = []
@@ -116,7 +116,7 @@ all_systems = [
   # The second local node shares pair A's subnet and Multi-Attach volume.
   {
     region                     = "us_east_1"
-    hostname                   = "fs-node-a2"
+    hostname                   = "tcnaw-hafs02a"
     availability_zone          = "us-east-1a"
     subnet_id                  = "subnet-0dbb7770d19f253ad"
     key_name                   = "nwarila-ec2-key"
@@ -153,7 +153,7 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "fs-node-a2 CI firewall"
+        description     = "tcnaw-hafs02a CI firewall"
         interface_type  = null
         private_ip      = null
         security_groups = []
@@ -189,7 +189,7 @@ all_systems = [
   # Cluster pair B: two nodes in one subnet and a second Availability Zone.
   {
     region                     = "us_east_1"
-    hostname                   = "fs-node-b1"
+    hostname                   = "tcnaw-hafs01b"
     availability_zone          = "us-east-1b"
     subnet_id                  = "subnet-04260d6f543906b6b"
     key_name                   = "nwarila-ec2-key"
@@ -226,7 +226,7 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "fs-node-b1 CI firewall"
+        description     = "tcnaw-hafs01b CI firewall"
         interface_type  = null
         private_ip      = null
         security_groups = []
@@ -262,7 +262,7 @@ all_systems = [
   # The second local node shares pair B's subnet and Multi-Attach volume.
   {
     region                     = "us_east_1"
-    hostname                   = "fs-node-b2"
+    hostname                   = "tcnaw-hafs02b"
     availability_zone          = "us-east-1b"
     subnet_id                  = "subnet-04260d6f543906b6b"
     key_name                   = "nwarila-ec2-key"
@@ -299,7 +299,7 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "fs-node-b2 CI firewall"
+        description     = "tcnaw-hafs02b CI firewall"
         interface_type  = null
         private_ip      = null
         security_groups = []
@@ -335,7 +335,7 @@ all_systems = [
   # The workgroup witness stands alone in the third Availability Zone.
   {
     region                     = "us_east_1"
-    hostname                   = "fs-witness-01"
+    hostname                   = "tcnaw-witnes01c"
     availability_zone          = "us-east-1c"
     subnet_id                  = "subnet-03a855e712be7b399"
     key_name                   = "nwarila-ec2-key"
@@ -372,7 +372,7 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "fs-witness-01 CI firewall"
+        description     = "tcnaw-witnes01c CI firewall"
         interface_type  = null
         private_ip      = null
         security_groups = []
@@ -411,8 +411,8 @@ shared_ebs_volumes = {
       Function = "Cluster Shared Volume (AZ A)"
     }
     attachments = [
-      { hostname = "fs-node-a1", device_index = 0 },
-      { hostname = "fs-node-a2", device_index = 0 }
+      { hostname = "tcnaw-hafs01a", device_index = 0 },
+      { hostname = "tcnaw-hafs02a", device_index = 0 }
     ]
   }
   cluster-data-b = {
@@ -425,8 +425,8 @@ shared_ebs_volumes = {
       Function = "Cluster Shared Volume (AZ B)"
     }
     attachments = [
-      { hostname = "fs-node-b1", device_index = 0 },
-      { hostname = "fs-node-b2", device_index = 0 }
+      { hostname = "tcnaw-hafs01b", device_index = 0 },
+      { hostname = "tcnaw-hafs02b", device_index = 0 }
     ]
   }
 }

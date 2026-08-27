@@ -2,56 +2,172 @@
 # File: 'ansible/playbooks/fileserver-aws.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Applies the fileserver role to the ratified five-instance shape on EPHEMERAL EC2: four
-# cluster nodes (fileserver_nodes, two per AZ in us-east-1a/1b) and one non-domain-joined
-# file-share witness (fileserver_witness, third AZ). Runs from the COMPOSED tree only — the
-# deploy workflow overlays this repository's roles into the pinned ansible-framework checkout
-# and executes this playbook against an exact per-run inventory (see ansible/inventory/).
+# Brings five EPHEMERAL EC2 instances from "the API says they exist" to prepared Windows hosts.
+# All five are made reachable and bootstrapped; the four cluster nodes then receive the private
+# network, domain membership, and one prepared shared volume per Availability Zone. The witness
+# remains outside that domain-side preparation but receives the file-server baseline.
 #
-# The role's current scope (the SMB server baseline) applies to all five instances, so one
-# play targets the union. EP3 splits node-only work (domain join, WSFC bootstrap) into its own
-# play over fileserver_nodes when it lands; the witness must be targetable separately, which
-# is why the two groups exist at all.
+# Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
+# ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
 #
-# The framework windows_disk_manager role is deliberately absent: per-node data disks arrive
-# with the shared-volume design (EP4), and a disk layout declared before a disk exists would
-# be a fiction — see docs/explanation/technical-debt.md.
+# The play and role order is the design. Every host must answer before its shell can be repaired.
+# The cluster nodes must then reach the private network before joining the realm, and their shared
+# volumes must be lettered before file-server work begins.
+#
+# gather_facts and become are absent throughout because the framework's ansible.cfg makes
+# gathering explicit and escalation off. Implicit gathering would run a module over the shell
+# os_bootstrap has not yet fixed, and the PowerShell connection plugin refuses become.
 #
 # =========================================================================================== #
 ---
-- name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
-  hosts: 'fileserver_nodes:fileserver_witness'
-  gather_facts: false
-  become: false
-  any_errors_fatal: true
-  vars:
-    ENV: "{{ env }}"
 
-  #region ------ [ Pre-Tasks ] --------------------------------------------------------------- #
-  pre_tasks:
+#region ------ [ Play: Inventory Contract ] --------------------------------------------------- #
+# The inventory already filters to this run's instances by framework-set tags. This guards the
+# two states that filter cannot cover: an empty or partial result, and an invocation that never
+# said which account and region it is deploying into.
 
-    # The five-instance shape is ratified, so the assertion names the exact expected numbers —
-    # a lower bound would let a half-provisioned fleet converge and report green.
-    - name: 'PRE | Assert The Ratified Five-Instance Shape'
-      run_once: true
+- name: 'PLAY | Validate The Ephemeral AWS Inventory Contract'
+  hosts: 'localhost'
+  tasks:
+    - name: 'INVENTORY | Require The Ratified Five-Instance Shape'
       ansible.builtin.assert:
         that:
           - groups['fileserver_nodes'] | default([]) | length == 4
           - groups['fileserver_witness'] | default([]) | length == 1
+          - >-
+            (groups['all'] | default([]) | sort)
+            ==
+            (
+              (groups['fileserver_nodes'] | default([]))
+              + (groups['fileserver_witness'] | default([]))
+            ) | sort
         fail_msg: >-
-          Expected exactly 4 hosts in fileserver_nodes and 1 in fileserver_witness; found
+          Refusing to configure: expected the inventory to contain only 4 hosts in
+          'fileserver_nodes' and 1 in 'fileserver_witness'; found
           {{ groups['fileserver_nodes'] | default([]) | length }} and
-          {{ groups['fileserver_witness'] | default([]) | length }}. The inventory must carry
-          the ratified shape (4 cluster nodes + 1 file-share witness) before anything runs.
+          {{ groups['fileserver_witness'] | default([]) | length }}, with all hosts
+          {{ groups['all'] | default([]) | sort }}. The dynamic EC2 inventory must carry exactly
+          the ratified 4 cluster nodes and 1 file-share witness before anything runs.
         quiet: true
 
-  #endregion --- [ Pre-Tasks ] --------------------------------------------------------------- #
+    # Account-derived values are passed EXPLICITLY on the invocation, never read from the
+    # environment by a role, so the play and the deploy identity cannot disagree.
+    - name: 'INVENTORY | Require The AWS Deployment Identity'
+      ansible.builtin.assert:
+        that:
+          - aws_account_id is defined
+          - aws_account_id is match('^[0-9]{12}$')
+          - aws_region is defined
+          - aws_region is match('^[a-z]{2}(-[a-z]+)+-[0-9]$')
+        fail_msg: >-
+          aws_account_id and aws_region must be provided as extra-vars. The aws-deploy workflow
+          passes them from its own environment (the same values the OIDC role ARN and region
+          use); a local run must pass both explicitly.
+        quiet: true
 
-  #region ------ [ Roles ] ------------------------------------------------------------------- #
+#endregion --- [ Play: Inventory Contract ] --------------------------------------------------- #
+
+#region ------ [ Play: Configure The Guest ] -------------------------------------------------- #
+
+- name: 'PLAY | Configure The Guest (ephemeral AWS)'
+  hosts: 'fileserver_nodes:fileserver_witness'
+  any_errors_fatal: true
+
+  #region ------ [ Roles ] -------------------------------------------------------------------- #
   roles:
 
-    # Converges the SMB baseline via the role's first-class PowerShell scripts, then fails
-    # closed on the unimplemented cluster surface (EP3/EP4) by design.
+    #region ------ [ Roles: Host Readiness ] -------------------------------------------------- #
+    # Waits for the connection itself, never a port: a TCP connect cannot speak for a connection
+    # reaching its target through a proxy or a tunnel. It then waits out EC2Launch, detecting the
+    # platform itself rather than being told.
+    - role: 'host_readiness'
+    #endregion --- [ Roles: Host Readiness ] -------------------------------------------------- #
+
+    #region ------ [ Roles: OS Bootstrap ] ---------------------------------------------------- #
+    # Flips OpenSSH's DefaultShell to PowerShell and proves the session is elevated. Every module
+    # after it depends on that. Pass it NO vars: role params outrank the connection scoping it
+    # relies on, and a stray one silently re-breaks the pre-flip stage.
+    - role: 'os_bootstrap'
+    #endregion --- [ Roles: OS Bootstrap ] ---------------------------------------------------- #
+
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #
+
+#endregion --- [ Play: Configure The Guest ] -------------------------------------------------- #
+
+#region ------ [ Play: Prepare The Domain Members ] ------------------------------------------- #
+# The witness is a workgroup file-share witness by design: it has no tunnel egress, domain
+# membership, or data volume. This hosts boundary keeps every domain-side role confined to the
+# four cluster nodes.
+
+- name: 'PLAY | Prepare The Domain Members (ephemeral AWS)'
+  hosts: 'fileserver_nodes'
+  any_errors_fatal: true
+  vars:
+    # The lower-numbered node (01) in each AZ is the sole preparer for that pair's shared volume;
+    # its hostname is the key, and the value is that volume's Function tag.
+    fileserver_shared_volume_by_preparer:
+      tcnaw-hafs01a: 'Cluster Shared Volume (AZ A)'
+      tcnaw-hafs01b: 'Cluster Shared Volume (AZ B)'
+
+  #region ------ [ Roles ] -------------------------------------------------------------------- #
+  roles:
+
+    #region ------ [ Roles: Remote Client ] --------------------------------------------------- #
+    # Site policy: the role defaults every value remote_client needs, so this play states none.
+    # 'aws_account_id' is an extra-var -- only the pipeline knows which account it deploys into.
+    # Skipped when the product is being removed: an uninstall is not a reason to rebuild a tunnel
+    # the host is about to stop needing.
+    - role: 'remote_client'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+    #endregion --- [ Roles: Remote Client ] --------------------------------------------------- #
+
+    #region ------ [ Roles: Domain Member ] --------------------------------------------------- #
+    # Wraps the platform's join mechanism and defaults the site's realm, account, and secret.
+    # Only two things are this repository's to say: the account it deploys into, and the OU where
+    # its file-server computer objects belong.
+    - role: 'domain_member'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+      vars:
+        domain_member:  # noqa: var-naming[no-role-prefix]
+          password: { bucket: "{{ aws_account_id }}-ansible" }
+          computer_ou: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+    #endregion --- [ Roles: Domain Member ] --------------------------------------------------- #
+
+    #region ------ [ Roles: Windows Disk Manager ] -------------------------------------------- #
+    # Each Function value names one EBS Multi-Attach volume from terraform/aws.tfvars. The first
+    # host in each AZ is its designated preparer. Its partner observes the same attached volume
+    # without racing an initialize, partition, or format operation.
+    #
+    # D: is the contract this play publishes to the cluster work that follows in later regions.
+    - role: 'windows_disk_manager'
+      when: inventory_hostname in fileserver_shared_volume_by_preparer
+      vars:
+        windows_disk_manager:  # noqa: var-naming[no-role-prefix]
+          platform: 'aws'
+          disks:
+            - function: "{{ fileserver_shared_volume_by_preparer.get(inventory_hostname, '') }}"
+              drive_letter: 'D'
+              label: 'FILEDATA'
+              allocation_unit: 65536
+    #endregion --- [ Roles: Windows Disk Manager ] -------------------------------------------- #
+
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #
+
+#endregion --- [ Play: Prepare The Domain Members ] ------------------------------------------- #
+
+#region ------ [ Play: File Server HA Baseline ] ---------------------------------------------- #
+
+- name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
+  hosts: 'fileserver_nodes:fileserver_witness'
+  any_errors_fatal: true
+
+  #region ------ [ Roles ] -------------------------------------------------------------------- #
+  roles:
+
+    # Converges the SMB baseline via the role's first-class PowerShell scripts, then fails closed
+    # on the unimplemented cluster surface by design.
     - role: 'fileserver'
 
-  #endregion --- [ Roles ] ------------------------------------------------------------------- #
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #
+
+#endregion --- [ Play: File Server HA Baseline ] ---------------------------------------------- #
