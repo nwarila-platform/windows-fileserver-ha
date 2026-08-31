@@ -29,7 +29,7 @@
 # is that ordering, not the kind of flag, that keeps this file from renaming the deployment.
 
 all_systems = [
-  # Cluster pair A: two nodes in one subnet and Availability Zone.
+  # Cluster pair A: two nodes in separate subnets in one Availability Zone.
   {
     region            = "us_east_1"
     hostname          = "tcnaw-hafs01a"
@@ -79,11 +79,14 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "tcnaw-hafs01a CI firewall"
-        interface_type  = null
-        private_ip      = null
-        security_groups = []
-        ingress         = []
+        description    = "tcnaw-hafs01a CI firewall"
+        interface_type = null
+        # The cluster brings its client access point online on the additional address; AWS
+        # requires that address to exist on the interface beforehand.
+        private_ip             = "10.0.1.10"
+        additional_private_ips = ["10.0.1.11"]
+        security_groups        = []
+        ingress                = []
         egress = [
           {
             description                  = "HTTPS out"
@@ -113,12 +116,12 @@ all_systems = [
     # No Elastic IP: the subnet auto-assigns the launch-time public IPv4 used for direct SSH.
     associate_public_ip = false
   },
-  # The second local node shares pair A's subnet and Multi-Attach volume.
+  # The second local node stays in pair A's Availability Zone and gets its own subnet.
   {
     region                     = "us_east_1"
     hostname                   = "tcnaw-hafs02a"
     availability_zone          = "us-east-1a"
-    subnet_id                  = "subnet-0dbb7770d19f253ad"
+    subnet_id                  = "subnet-0173d92ca70fc1e7a"
     key_name                   = "nwarila-ec2-key"
     iam_instance_profile       = "nwarila-ec2-profile"
     aws_kms_alias              = "aws/ebs"
@@ -153,11 +156,12 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "tcnaw-hafs02a CI firewall"
-        interface_type  = null
-        private_ip      = null
-        security_groups = []
-        ingress         = []
+        description            = "tcnaw-hafs02a CI firewall"
+        interface_type         = null
+        private_ip             = "10.0.33.10"
+        additional_private_ips = ["10.0.33.11"]
+        security_groups        = []
+        ingress                = []
         egress = [
           {
             description                  = "HTTPS out"
@@ -186,7 +190,7 @@ all_systems = [
 
     associate_public_ip = false
   },
-  # Cluster pair B: two nodes in one subnet and a second Availability Zone.
+  # Cluster pair B: two nodes in separate subnets in a second Availability Zone.
   {
     region                     = "us_east_1"
     hostname                   = "tcnaw-hafs01b"
@@ -226,11 +230,12 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "tcnaw-hafs01b CI firewall"
-        interface_type  = null
-        private_ip      = null
-        security_groups = []
-        ingress         = []
+        description            = "tcnaw-hafs01b CI firewall"
+        interface_type         = null
+        private_ip             = "10.0.65.10"
+        additional_private_ips = ["10.0.65.11"]
+        security_groups        = []
+        ingress                = []
         egress = [
           {
             description                  = "HTTPS out"
@@ -259,12 +264,12 @@ all_systems = [
 
     associate_public_ip = false
   },
-  # The second local node shares pair B's subnet and Multi-Attach volume.
+  # The second local node stays in pair B's Availability Zone and gets its own subnet.
   {
     region                     = "us_east_1"
     hostname                   = "tcnaw-hafs02b"
     availability_zone          = "us-east-1b"
-    subnet_id                  = "subnet-04260d6f543906b6b"
+    subnet_id                  = "subnet-0fe915e5c0094408b"
     key_name                   = "nwarila-ec2-key"
     iam_instance_profile       = "nwarila-ec2-profile"
     aws_kms_alias              = "aws/ebs"
@@ -299,11 +304,12 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "tcnaw-hafs02b CI firewall"
-        interface_type  = null
-        private_ip      = null
-        security_groups = []
-        ingress         = []
+        description            = "tcnaw-hafs02b CI firewall"
+        interface_type         = null
+        private_ip             = "10.0.97.10"
+        additional_private_ips = ["10.0.97.11"]
+        security_groups        = []
+        ingress                = []
         egress = [
           {
             description                  = "HTTPS out"
@@ -372,8 +378,10 @@ all_systems = [
 
     network_interfaces = [
       {
-        description     = "tcnaw-witnes01c CI firewall"
-        interface_type  = null
+        description    = "tcnaw-witnes01c CI firewall"
+        interface_type = null
+        # The witness is not a cluster member and hosts no clustered role, so it needs neither a
+        # static primary nor a cluster address.
         private_ip      = null
         security_groups = []
         ingress         = []
