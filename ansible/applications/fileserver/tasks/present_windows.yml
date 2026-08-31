@@ -8,9 +8,10 @@
 # $Ansible, so this task file stays declarative and the play recap stays honest
 # (docs/reference/powershell-style-guide.md).
 #
-# The role currently fails closed at END: WSFC bootstrap (EP3) and shared disks, Storage
-# Replica, and file roles (EP4) are unimplemented, and a host must not be reported converged
-# into an undefined state. Remove the END guard only when the cluster surface lands.
+# The role currently fails closed at END: WSFC bootstrap, cluster validation and adoption of
+# the prepared shared disks, Storage Replica, and file roles are unimplemented, and a host must
+# not be reported converged into an undefined state. Remove the END guard only when the cluster
+# surface lands.
 #
 # =========================================================================================== #
 ---
@@ -30,6 +31,262 @@
       Setting: "{{ fileserver_running.smb.settings }}"
     error_action: 'stop'
 
+# The domain roles use a nodes-only play boundary because they serve only domain members. This
+# role serves both the nodes and the workgroup witness, so its cluster-only work needs a task
+# guard while the witness continues through the shared SMB baseline.
+- name: 'MAIN | Prepare The Cluster Nodes For Validation'
+  when: inventory_hostname in (groups['fileserver_nodes'] | default([]))
+  vars:
+    __fileserver_nvme_path__: >-
+      HKLM:\SYSTEM\CurrentControlSet\Services\AWSNVMe\Parameters\Device
+    __fileserver_reboot_state_path__: 'HKLM:\SOFTWARE\NWarila\Fileserver'
+
+  block:
+
+    #region ------ [ Begin: Prepare The Cluster Nodes For Validation ] ------------------------ #
+
+    - name: 'BEGIN | Read The Machine And Decide Whether A Restart Is Owed'
+
+      # Begin The 'Begin' Block
+      block:
+
+        # The boot token is the running-state boundary. A marker carrying this token means the
+        # driver value was written during the current boot and the running driver has not consumed
+        # it. A different token means an out-of-band restart already consumed the value.
+        - name: 'BEGIN | Read The Current Boot Token'
+          changed_when: false
+          check_mode: false
+          register: '__fileserver_boot_time__'
+
+          ansible.windows.win_shell:
+            cmd: >-
+              (Get-CimInstance -ClassName Win32_OperatingSystem -Property
+              LastBootUpTime).LastBootUpTime.ToFileTime()
+            no_profile: true
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'BEGIN | Read The SCSI Persistent Reservation Switch'
+          register: '__fileserver_nvme_reservations__'
+
+          ansible.windows.win_reg_stat:
+            name: 'EnableSCSIPersistentReservations'
+            path: "{{ __fileserver_nvme_path__ }}"
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'BEGIN | Read Any Outstanding NVMe Driver Restart Debt'
+          register: '__fileserver_nvme_reboot_debt__'
+
+          ansible.windows.win_reg_stat:
+            name: 'NVMeReservationsBootTime'
+            path: "{{ __fileserver_reboot_state_path__ }}"
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'BEGIN | Decide Whether The NVMe Driver Requires A Restart'
+          ansible.builtin.set_fact:
+            __fileserver_nvme_enabled__: >-
+              {{ (__fileserver_nvme_reservations__.exists | default(false) | bool)
+                 and (__fileserver_nvme_reservations__.type | default('') == 'REG_DWORD')
+                 and (__fileserver_nvme_reservations__.value | default(0) | int == 1) }}
+            __fileserver_nvme_reboot_required__: >-
+              {{ not (
+                   (__fileserver_nvme_reservations__.exists | default(false) | bool)
+                   and (__fileserver_nvme_reservations__.type | default('') == 'REG_DWORD')
+                   and (__fileserver_nvme_reservations__.value | default(0) | int == 1)
+                 )
+                 or (
+                   (__fileserver_nvme_reboot_debt__.exists | default(false) | bool)
+                   and ((__fileserver_nvme_reboot_debt__.value | default('') | string)
+                        == (__fileserver_boot_time__.stdout | trim))
+                 ) }}
+
+      # End The 'Begin' Block
+
+    #endregion --- [ Begin: Prepare The Cluster Nodes For Validation ] ------------------------ #
+
+
+    #region ------ [ Process: Prepare The Cluster Nodes For Validation ] ---------------------- #
+
+    - name: 'PROCESS | Apply The Cluster Validation Prerequisites'
+
+      # Begin The 'Process' Block
+      block:
+
+        # Record the current boot BEFORE changing the driver value. If the converge stops at any
+        # point after this task, the next run still knows that the running driver owes a restart.
+        - name: 'PROCESS | Record The Outstanding NVMe Driver Restart'
+          when: __fileserver_nvme_reboot_required__
+
+          ansible.windows.win_regedit:
+            data: "{{ __fileserver_boot_time__.stdout | trim }}"
+            name: 'NVMeReservationsBootTime'
+            path: "{{ __fileserver_reboot_state_path__ }}"
+            state: 'present'
+            type: 'string'
+
+        # AWS exposes SCSI persistent reservations to Windows Failover Clustering only when this
+        # driver switch is enabled. The DWORD write is type-aware and reports no change at 1.
+        - name: 'PROCESS | Enable SCSI Persistent Reservations In The AWS NVMe Driver'
+          when: not __fileserver_nvme_enabled__
+
+          ansible.windows.win_regedit:
+            data: 1
+            name: 'EnableSCSIPersistentReservations'
+            path: "{{ __fileserver_nvme_path__ }}"
+            state: 'present'
+            type: 'dword'
+
+        # Management tools carry the FailoverClusters module used by the later validation and
+        # formation region. This remains ungated so the module can report server restart state
+        # even when every requested feature is already installed.
+        - name: 'PROCESS | Install Failover Clustering And Its Management Tools'
+          register: '__fileserver_failover_clustering__'
+
+          ansible.windows.win_feature:
+            include_management_tools: true
+            include_sub_features: false
+            name: 'Failover-Clustering'
+            state: 'present'
+
+        # A restart is safe here only because no cluster exists yet. Once a host is a cluster
+        # member, rolling replacement must drain it before restarting. The driver decision comes
+        # from durable boot state, while the feature decision comes from Server Manager's own
+        # reboot_required result; neither depends on this invocation's changed flags.
+        - name: 'PROCESS | Reboot When The Cluster Prerequisites Require It'
+          when: >-
+            __fileserver_nvme_reboot_required__
+            or (__fileserver_failover_clustering__.reboot_required | default(false) | bool)
+
+          ansible.windows.win_reboot:
+            boot_time_command: >-
+              (Get-CimInstance -ClassName Win32_OperatingSystem -Property
+              LastBootUpTime).LastBootUpTime.ToFileTime()
+            connect_timeout: 5
+            msg: 'Restarting to apply the failover cluster prerequisites.'
+            post_reboot_delay: 0
+            pre_reboot_delay: 2
+            reboot_timeout: 600
+
+        # A stale marker means an out-of-band restart already crossed the recorded boot boundary.
+        # A current marker reaches this task only after win_reboot proved a different boot token.
+        - name: 'PROCESS | Clear The Satisfied NVMe Driver Restart Debt'
+          when: >-
+            (__fileserver_nvme_reboot_debt__.exists | default(false) | bool)
+            or __fileserver_nvme_reboot_required__
+
+          ansible.windows.win_regedit:
+            name: 'NVMeReservationsBootTime'
+            path: "{{ __fileserver_reboot_state_path__ }}"
+            state: 'absent'
+
+      # End The 'Process' Block
+
+    #endregion --- [ Process: Prepare The Cluster Nodes For Validation ] ---------------------- #
+
+
+    #region ------ [ End: Prepare The Cluster Nodes For Validation ] -------------------------- #
+
+    - name: 'END | Re-Read And Prove The Cluster Validation Prerequisites'
+
+      # Begin The 'End' Block
+      block:
+
+        # END is deliberately ungated: a converged node proves the same state as a new one.
+        - name: 'END | Re-Read The SCSI Persistent Reservation Switch'
+          register: '__fileserver_final_nvme_reservations__'
+
+          ansible.windows.win_reg_stat:
+            name: 'EnableSCSIPersistentReservations'
+            path: "{{ __fileserver_nvme_path__ }}"
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'END | Re-Read The NVMe Driver Restart Debt'
+          register: '__fileserver_final_nvme_reboot_debt__'
+
+          ansible.windows.win_reg_stat:
+            name: 'NVMeReservationsBootTime'
+            path: "{{ __fileserver_reboot_state_path__ }}"
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'END | Re-Read The Failover Clustering Feature'
+          register: '__fileserver_final_failover_clustering__'
+
+          ansible.windows.win_feature_info:
+            name: 'Failover-Clustering'
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'END | Re-Read The Failover Cluster Management Tools'
+          register: '__fileserver_final_clustering_tools__'
+
+          ansible.windows.win_feature_info:
+            name: 'RSAT-Clustering*'
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'END | Re-Read The FailoverClusters Module Availability'
+          changed_when: false
+          check_mode: false
+          register: '__fileserver_final_failoverclusters_module__'
+
+          ansible.windows.win_shell:
+            cmd: >-
+              Get-Module -ListAvailable -Name FailoverClusters |
+              Select-Object -First 1 -ExpandProperty Name
+            no_profile: true
+
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'END | Prove The Cluster Validation Prerequisites'
+          vars:
+            __fileserver_final_feature_state__: >-
+              {{ (__fileserver_final_failover_clustering__.features | default([])
+                  | selectattr('name', 'equalto', 'Failover-Clustering')
+                  | map(attribute='install_state') | list | first)
+                 | default('missing', true) }}
+            __fileserver_final_tools_state__: >-
+              {{ (__fileserver_final_clustering_tools__.features | default([])
+                  | selectattr('name', 'equalto', 'RSAT-Clustering')
+                  | map(attribute='install_state') | list | first)
+                 | default('missing', true) }}
+            __fileserver_final_module_feature_state__: >-
+              {{ (__fileserver_final_clustering_tools__.features | default([])
+                  | selectattr('name', 'equalto', 'RSAT-Clustering-PowerShell')
+                  | map(attribute='install_state') | list | first)
+                 | default('missing', true) }}
+
+          ansible.builtin.assert:
+            fail_msg: >-
+              The cluster validation prerequisites did not survive readback. AWS NVMe
+              EnableSCSIPersistentReservations is
+              '{{ __fileserver_final_nvme_reservations__.value | default('missing') }}' with
+              type '{{ __fileserver_final_nvme_reservations__.type | default('missing') }}';
+              restart debt is
+              '{{ 'present' if (__fileserver_final_nvme_reboot_debt__.exists | default(false)
+                                | bool) else 'absent' }}'; Failover-Clustering is
+              '{{ __fileserver_final_feature_state__ }}'; RSAT-Clustering is
+              '{{ __fileserver_final_tools_state__ }}'; RSAT-Clustering-PowerShell is
+              '{{ __fileserver_final_module_feature_state__ }}'; and Get-Module found
+              '{{ __fileserver_final_failoverclusters_module__.stdout | default('') | trim }}'.
+            quiet: true
+            that:
+              - __fileserver_final_nvme_reservations__.exists | default(false) | bool
+              - __fileserver_final_nvme_reservations__.type | default('') == 'REG_DWORD'
+              - __fileserver_final_nvme_reservations__.value | default(0) | int == 1
+              - not (__fileserver_final_nvme_reboot_debt__.exists | default(false) | bool)
+              - __fileserver_final_feature_state__ == 'Installed'
+              - __fileserver_final_tools_state__ == 'Installed'
+              - __fileserver_final_module_feature_state__ == 'Installed'
+              - __fileserver_final_failoverclusters_module__.stdout | trim == 'FailoverClusters'
+
+      # End The 'End' Block
+
+    #endregion --- [ End: Prepare The Cluster Nodes For Validation ] -------------------------- #
+
 #endregion --- [ Main ] ---------------------------------------------------------------------- #
 
 #region ------ [ End ] ----------------------------------------------------------------------- #
@@ -37,8 +294,9 @@
 - name: 'END | Refuse To Report A Converged File Server (EP3/EP4 pending)'
   ansible.builtin.fail:
     msg: >-
-      The fileserver role converges its SMB baseline only. WSFC bootstrap (EP3) and shared
-      disks, Storage Replica, and clustered file roles (EP4) are not implemented, so this role
-      fails closed rather than reporting a host converged into an undefined state.
+      The fileserver role converges only its SMB baseline and, on cluster nodes, the validation
+      prerequisites. WSFC bootstrap, cluster validation and adoption of the prepared shared disks,
+      Storage Replica, and clustered file roles are not implemented, so this role fails closed
+      rather than reporting a host converged into an undefined state.
 
 #endregion --- [ End ] ----------------------------------------------------------------------- #
