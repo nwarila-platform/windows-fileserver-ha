@@ -6,7 +6,7 @@
 # Composition runner: builds the combined execution tree and runs the playbook.
 #
 #   1. Clones/updates nwarila-platform/ansible-framework into .compose/ansible-framework
-#      and checks out the commit pinned in .framework-pin (tags once upstream releases).
+#      and checks out the commit pinned in .github/ansible-framework-pin (tags once upstream releases).
 #   2. Overlays this repo's roles into the framework's applications/ namespace (rsync
 #      --delete so stale files never linger).
 #   3. Runs the selected playbook with the framework's ansible.cfg as the chassis
@@ -23,13 +23,13 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_DIR="${REPO_ROOT}/.compose"
 FRAMEWORK_DIR="${COMPOSE_DIR}/ansible-framework"
 FRAMEWORK_REMOTE='git@github.com:nwarila-platform/ansible-framework.git'
-PIN_FILE="${REPO_ROOT}/.framework-pin"
+PIN_FILE="${REPO_ROOT}/.github/ansible-framework-pin"
 ANSIBLE_PLAYBOOK="${ANSIBLE_PLAYBOOK:-/root/.local/bin/ansible-playbook}"
 
 [ -f "${PIN_FILE}" ] || { echo "!! missing ${PIN_FILE}" >&2; exit 1; }
 PIN="$(tr -d '[:space:]' < "${PIN_FILE}")"
 if ! [[ "${PIN}" =~ ^[0-9a-f]{40}$ ]]; then
-    echo "!! .framework-pin must be a full 40-character lowercase git commit SHA, not a tag/branch: '${PIN}'" >&2
+    echo "!! .github/ansible-framework-pin must be a full 40-character lowercase git commit SHA, not a tag/branch: '${PIN}'" >&2
     exit 1
 fi
 COMPOSE_PLAYBOOK_VALUE="${COMPOSE_PLAYBOOK-fileserver-aws.yml}"
@@ -124,6 +124,15 @@ echo ">> Framework pinned at $(git -C "${FRAMEWORK_DIR}" rev-parse --short HEAD)
 # The framework's own roles track only files/<Name>.ps1.stub, so their scripts must be
 # materialized in the checkout. This runs BEFORE the overlay because that materializer validates
 # every stub it finds, and this repository's roles resolve their sources from this repository.
+# A previous run's overlay survives the checkout, and the materializer would then try to resolve
+# THIS repository's stubs against the framework's own scripts/ and fail. Clearing the overlay
+# first restores the clean-checkout precondition the ordering above depends on.
+shopt -s nullglob
+for stale_role in "${REPO_ROOT}"/ansible/applications/*; do
+    rm -rf "${FRAMEWORK_DIR}/applications/$(basename "${stale_role}")"
+done
+shopt -u nullglob
+
 if [ -x "${FRAMEWORK_DIR}/scripts/materialize-role-scripts.sh" ]; then
     (cd "${FRAMEWORK_DIR}" && ./scripts/materialize-role-scripts.sh)
 fi

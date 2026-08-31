@@ -31,6 +31,12 @@
 !/ansible/applications/fileserver/meta/
 !/ansible/applications/fileserver/tasks/
 !/ansible/applications/fileserver/vars/
+!/ansible/applications/fileserver_ad_config/
+!/ansible/applications/fileserver_ad_config/defaults/
+!/ansible/applications/fileserver_ad_config/files/
+!/ansible/applications/fileserver_ad_config/meta/
+!/ansible/applications/fileserver_ad_config/tasks/
+!/ansible/applications/fileserver_ad_config/vars/
 !/ansible/inventory/
 !/ansible/playbooks/
 !/docs/
@@ -44,7 +50,6 @@
 
 # --- [ allowed: repository configuration ] -------------------------------------------------- #
 !/.editorconfig
-!/.framework-pin
 !/.gitignore
 !/.yamllint.yml
 
@@ -64,6 +69,7 @@
 !/.github/workflows/powershell.yml
 !/.github/workflows/quality.yml
 !/.github/renovate.json5
+!/.github/ansible-framework-pin
 !/.github/terraform-framework-pin
 
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
@@ -76,8 +82,19 @@
 !/ansible/applications/fileserver/tasks/present_windows.yml
 !/ansible/applications/fileserver/tasks/validate.yml
 !/ansible/applications/fileserver/vars/windows.yml
+!/ansible/applications/fileserver_ad_config/README.md
+!/ansible/applications/fileserver_ad_config/files/Set-ClusterDirectoryRights.ps1.stub
+!/ansible/applications/fileserver_ad_config/defaults/main.yml
+!/ansible/applications/fileserver_ad_config/meta/main.yml
+!/ansible/applications/fileserver_ad_config/tasks/clean_windows.yml
+!/ansible/applications/fileserver_ad_config/tasks/main.yml
+!/ansible/applications/fileserver_ad_config/tasks/present_windows.yml
+!/ansible/applications/fileserver_ad_config/tasks/validate.yml
+!/ansible/applications/fileserver_ad_config/vars/windows.yml
 !/ansible/inventory/README.md
 !/ansible/inventory/aws_ec2.yml
+!/ansible/inventory/domain_controllers.yml
+!/ansible/playbooks/fileserver-ad-config-local.yml
 !/ansible/playbooks/fileserver-aws.yml
 
 # --- [ allowed: published documentation ] --------------------------------------------------- #
@@ -101,6 +118,8 @@
 # --- [ allowed: scripts ] ------------------------------------------------------------------- #
 # The generic script home: PowerShell pairs (one script + one spec — new scripts add both
 # lines together) beside Python/bash tooling.
+!/scripts/Set-ClusterDirectoryRights.pester.ps1
+!/scripts/Set-ClusterDirectoryRights.ps1
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
 !/scripts/compose-and-run.sh
