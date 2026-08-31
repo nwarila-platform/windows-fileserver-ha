@@ -81,10 +81,11 @@ all_systems = [
       {
         description    = "tcnaw-hafs01a CI firewall"
         interface_type = null
-        # The cluster brings its client access point online on the additional address; AWS
-        # requires that address to exist on the interface beforehand.
+        # Two cluster network names come online in this subnet -- the cluster's own and the
+        # file server's client access point -- and each needs its own address. AWS requires both
+        # to exist on the interface beforehand.
         private_ip             = "10.0.1.10"
-        additional_private_ips = ["10.0.1.11"]
+        additional_private_ips = ["10.0.1.11", "10.0.1.12"]
         security_groups        = []
         ingress                = []
         egress = [
@@ -159,7 +160,7 @@ all_systems = [
         description            = "tcnaw-hafs02a CI firewall"
         interface_type         = null
         private_ip             = "10.0.33.10"
-        additional_private_ips = ["10.0.33.11"]
+        additional_private_ips = ["10.0.33.11", "10.0.33.12"]
         security_groups        = []
         ingress                = []
         egress = [
@@ -233,7 +234,7 @@ all_systems = [
         description            = "tcnaw-hafs01b CI firewall"
         interface_type         = null
         private_ip             = "10.0.65.10"
-        additional_private_ips = ["10.0.65.11"]
+        additional_private_ips = ["10.0.65.11", "10.0.65.12"]
         security_groups        = []
         ingress                = []
         egress = [
@@ -307,7 +308,7 @@ all_systems = [
         description            = "tcnaw-hafs02b CI firewall"
         interface_type         = null
         private_ip             = "10.0.97.10"
-        additional_private_ips = ["10.0.97.11"]
+        additional_private_ips = ["10.0.97.11", "10.0.97.12"]
         security_groups        = []
         ingress                = []
         egress = [

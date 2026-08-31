@@ -188,11 +188,12 @@ jobs:
             }
             printf '%s=%s\n' "${name}" "${pin}" >> "${GITHUB_OUTPUT}"
           }
-          # The ansible-framework pin is the single root .framework-pin, read by BOTH this workflow
-          # and scripts/compose-and-run.sh, so local and CI can never diverge. The terraform pin
-          # stays under .github/ because only CI consumes terraform.
+          # Both pins live under .github/ because that is where the dependency manager looks for
+          # them; a pin it cannot see can only ever be advanced by hand. Each is read by this
+          # workflow and, for ansible, by scripts/compose-and-run.sh, so local and CI cannot
+          # diverge.
           emit_pin terraform .github/terraform-framework-pin
-          emit_pin ansible .framework-pin
+          emit_pin ansible .github/ansible-framework-pin
 
       - name: Checkout aws-terraform-framework (pinned)
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
