@@ -88,42 +88,166 @@ all_systems = [
         additional_private_ips = ["10.0.1.11", "10.0.1.12"]
         security_groups        = []
         ingress = [
-          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
-          # between members that fully trust one another. These four subnets exist for
-          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -149,40 +273,166 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The outbound half of the cluster east-west contract above.
+          # Outbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -240,42 +490,166 @@ all_systems = [
         additional_private_ips = ["10.0.33.11", "10.0.33.12"]
         security_groups        = []
         ingress = [
-          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
-          # between members that fully trust one another. These four subnets exist for
-          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -301,40 +675,166 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The outbound half of the cluster east-west contract above.
+          # Outbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -391,42 +891,166 @@ all_systems = [
         additional_private_ips = ["10.0.65.11", "10.0.65.12"]
         security_groups        = []
         ingress = [
-          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
-          # between members that fully trust one another. These four subnets exist for
-          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -452,40 +1076,166 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The outbound half of the cluster east-west contract above.
+          # Outbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -542,42 +1292,166 @@ all_systems = [
         additional_private_ips = ["10.0.97.11", "10.0.97.12"]
         security_groups        = []
         ingress = [
-          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
-          # between members that fully trust one another. These four subnets exist for
-          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP from tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP from tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -603,40 +1477,166 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The outbound half of the cluster east-west contract above.
+          # Outbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.0.0/19"
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.32.0/19"
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.64.0/19"
+            description                  = "WSFC SMB to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
           {
-            description                  = "Cluster east-west"
-            ip_protocol                  = "-1"
-            from_port                    = null
-            to_port                      = null
-            cidr_ipv4                    = "10.0.96.0/19"
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs02a"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs02a"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service TCP to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC cluster service UDP to tcnaw-hafs01b"
+            ip_protocol                  = "udp"
+            from_port                    = 3343
+            to_port                      = 3343
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC SMB to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC ICMP to tcnaw-hafs01b"
+            ip_protocol                  = "icmp"
+            from_port                    = -1
+            to_port                      = -1
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "WSFC dynamic RPC to tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.0.65.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
           }

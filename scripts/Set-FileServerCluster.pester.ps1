@@ -40,6 +40,7 @@ BeforeAll {
     ForEach ($Address In $global:FsHaClusterAddresses) {
       [PSCustomObject]@{ Name = "IP Address $Address"; ResourceType = 'IP Address'; OwnerGroup = 'Cluster Group'; Address = $Address }
     }
+    @($global:FsHaClusterPhysicalDisks)
   }
   Function Get-ClusterParameter {
     Param ([Parameter(ValueFromPipeline = $True)] [System.Object]$InputObject, [System.String]$Name)
@@ -56,6 +57,13 @@ BeforeAll {
       $global:FsHaClusterName = $Name
       $global:FsHaClusterNodes = @($Node)
       $global:FsHaClusterAddresses = @($StaticAddress)
+      If ($global:FsHaClusterAutoAddDisk) {
+        $global:FsHaClusterPhysicalDisks = @(
+          [PSCustomObject]@{
+            Name = 'Cluster Disk 9'; ResourceType = 'Physical Disk'; OwnerGroup = 'Available Storage'
+          }
+        )
+      }
     }
   }
   Function Add-ClusterNode {
@@ -67,7 +75,7 @@ BeforeAll {
 }
 
 AfterAll {
-  Remove-Variable -Name 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaLocalClusterName', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaEligibleDiskReads' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaLocalClusterName', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaEligibleDiskReads' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-FileServerCluster' {
@@ -76,6 +84,8 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterName = 'TCNAW-FSCL01'
     $global:FsHaClusterNodes = @($script:Nodes)
     $global:FsHaClusterAddresses = @($script:Addresses)
+    $global:FsHaClusterPhysicalDisks = @()
+    $global:FsHaClusterAutoAddDisk = $False
     $global:FsHaLocalClusterName = ''
     $global:FsHaDownNode = ''
     $global:FsHaClusterWrites = @()
@@ -100,7 +110,28 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterWrites[0].StaticAddress | Should -Be $script:Addresses
     $global:FsHaClusterWrites[0].NoStorage | Should -BeTrue
     $global:FsHaClusterWrites[0].Force | Should -BeTrue
+    $Result.after.physical_disks | Should -HaveCount 0
     $global:FsHaEligibleDiskReads | Should -Be 0
+  }
+
+  It 'fails formation readback when New-Cluster auto-adds storage' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaClusterAutoAddDisk = $True
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses } |
+      Should -Throw '*auto-added Physical Disk*'
+  }
+
+  It 'does not confuse later declared storage with formation-time auto-add' {
+    $global:FsHaClusterPhysicalDisks = @(
+      [PSCustomObject]@{
+        Name = 'Cluster Disk 9'; ResourceType = 'Physical Disk'; OwnerGroup = 'Available Storage'
+      }
+    )
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses | ConvertFrom-Json
+    $Result.changed | Should -BeFalse
+    $global:FsHaClusterWrites | Should -HaveCount 0
   }
 
   It 'repairs one missing node with only Add-ClusterNode' {

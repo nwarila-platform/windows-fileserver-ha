@@ -232,13 +232,21 @@ If (@(Compare-Object -ReferenceObject $EligibleNetworkNames -DifferenceObject $D
 }
 
 $Before = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+$Current = $Before
 $Actions = [System.Collections.Generic.List[System.String]]::new()
 $IpTransaction = $False
 $DesiredDependency = ''
 If ($Null -eq $Before) {
   $Actions.Add('create_role')
-} Else {
-  $RolePhysicalNames = @($Before.physical_disks | ForEach-Object -Process { [System.String]$PSItem.Name })
+
+  If (-not $Ansible.CheckMode) {
+    $Null = Add-ClusterFileServerRole -Cluster $ClusterName -Name $RoleName -Storage $HomeDisk.Name -StaticAddress $DesiredAddresses -IgnoreNetwork $IgnoredNetworkNames -Wait 600
+    $Current = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+  }
+}
+
+If ($Null -ne $Current) {
+  $RolePhysicalNames = @($Current.physical_disks | ForEach-Object -Process { [System.String]$PSItem.Name })
   If ($RolePhysicalNames.Count -gt 0 -and ($RolePhysicalNames.Count -ne 1 -or $RolePhysicalNames[0] -ine [System.String]$HomeDisk.Name)) {
     Throw ('Role {0} contains a wrong or extra Physical Disk resource.' -f $RoleName)
   }
@@ -246,14 +254,14 @@ If ($Null -eq $Before) {
     If ([System.String]$HomeDisk.OwnerGroup -ne 'Available Storage') { Throw 'The home disk belongs to a foreign cluster group.' }
     $Actions.Add('move_home_disk')
   }
-  $CurrentOwners = @($Before.preferred_owners | ForEach-Object -Process { $PSItem.ToLowerInvariant() })
+  $CurrentOwners = @($Current.preferred_owners | ForEach-Object -Process { $PSItem.ToLowerInvariant() })
   $DesiredOwners = @($OwnerNames | ForEach-Object -Process { $PSItem.ToLowerInvariant() })
   If ($CurrentOwners.Count -ne $DesiredOwners.Count -or (Compare-Object -ReferenceObject $DesiredOwners -DifferenceObject $CurrentOwners -SyncWindow 0)) {
     $Actions.Add('set_preferred_owners')
   }
   $DesiredIpObjects = @()
   ForEach ($Address In $DesiredAddresses) {
-    $IpMatches = @($Before.ip_resources | Where-Object -FilterScript { $PSItem.address -eq $Address })
+    $IpMatches = @($Current.ip_resources | Where-Object -FilterScript { $PSItem.address -eq $Address })
     If ($IpMatches.Count -gt 1) { Throw ('Role {0} has duplicate IP resources for {1}.' -f $RoleName, $Address) }
     $Network = $StaticNetworks[$Address]
     If ($IpMatches.Count -eq 0) {
@@ -269,28 +277,25 @@ If ($Null -eq $Before) {
       }
     }
   }
-  ForEach ($Extra In @($Before.ip_resources | Where-Object -FilterScript { $PSItem.address -notin $DesiredAddresses })) {
+  ForEach ($Extra In @($Current.ip_resources | Where-Object -FilterScript { $PSItem.address -notin $DesiredAddresses })) {
     $Actions.Add(('remove_ip:{0}' -f $Extra.name))
     $IpTransaction = $True
   }
   $DesiredDependency = (($DesiredIpObjects | Sort-Object -Property address | ForEach-Object -Process { '[{0}]' -f $PSItem.name }) -join ' or ')
-  If ($IpTransaction -or $Before.dependency -ne $DesiredDependency) {
+  If ($IpTransaction -or $Current.dependency -ne $DesiredDependency) {
     $Actions.Add('set_dependency')
     $IpTransaction = $True
   }
-  If ($Before.state -ne 'Online' -and -not $IpTransaction) { $Actions.Add('start_group') }
+  If ($Current.state -ne 'Online' -and -not $IpTransaction) { $Actions.Add('start_group') }
 }
 
 If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
   $After = $Before
-} ElseIf ($Actions.Contains('create_role')) {
-  $Null = Add-ClusterFileServerRole -Cluster $ClusterName -Name $RoleName -Storage $HomeDisk.Name -StaticAddress $DesiredAddresses -IgnoreNetwork $IgnoredNetworkNames -Wait 600
-  $After = & $GetRoleState -Cluster $ClusterName -Name $RoleName
 } Else {
   If ($Actions.Contains('move_home_disk')) { $Null = Move-ClusterResource -InputObject $HomeDisk -Group $RoleName }
   If ($Actions.Contains('set_preferred_owners')) { $Null = Set-ClusterOwnerNode -Group $RoleName -Owners $OwnerNames }
   If ($IpTransaction) {
-    If ($Before.state -ne 'Offline') { $Null = Stop-ClusterGroup -Name $RoleName -Wait 600 }
+    If ($Current.state -ne 'Offline') { $Null = Stop-ClusterGroup -Name $RoleName -Wait 600 }
     ForEach ($Action In @($Actions)) {
       If ($Action.StartsWith('add_ip:', [System.StringComparison]::Ordinal)) {
         $Address = $Action.Substring(7)
@@ -301,13 +306,13 @@ If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
         $Null = $Added[0] | Set-ClusterParameter -Multiple $Parameters
       } ElseIf ($Action.StartsWith('correct_ip:', [System.StringComparison]::Ordinal)) {
         $Address = $Action.Substring(11)
-        $Ip = @($Before.ip_resources | Where-Object -FilterScript { $PSItem.address -eq $Address })[0]
+        $Ip = @($Current.ip_resources | Where-Object -FilterScript { $PSItem.address -eq $Address })[0]
         $Network = $StaticNetworks[$Address]
         $Parameters = @{ Address = $Address; Network = [System.String]$Network.Name; SubnetMask = [System.String]$Network.AddressMask; EnableDhcp = 0 }
         $Null = $Ip.resource | Set-ClusterParameter -Multiple $Parameters
       } ElseIf ($Action.StartsWith('remove_ip:', [System.StringComparison]::Ordinal)) {
         $ResourceName = $Action.Substring(10)
-        $Extra = @($Before.ip_resources | Where-Object -FilterScript { $PSItem.name -eq $ResourceName })[0]
+        $Extra = @($Current.ip_resources | Where-Object -FilterScript { $PSItem.name -eq $ResourceName })[0]
         If ($Extra.state -ne 'Offline') { $Null = Stop-ClusterResource -InputObject $Extra.resource -Wait 300 }
         $Null = Remove-ClusterResource -InputObject $Extra.resource -Force
       }

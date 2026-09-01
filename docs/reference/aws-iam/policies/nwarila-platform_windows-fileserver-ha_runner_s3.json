@@ -29,7 +29,7 @@
       }
     },
     {
-      "Sid": "ReadAppRepoByExactPathOnlyNoListing",
+      "Sid": "ReadAppRepoBucketWideNoListing",
       "Effect": "Allow",
       "Action": "s3:GetObject",
       "Resource": "arn:aws:s3:::<account-id>-apprepo/*",

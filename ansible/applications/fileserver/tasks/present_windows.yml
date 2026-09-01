@@ -163,15 +163,56 @@
             name: 'FS-FileServer'
             state: 'present'
 
-        # A restart is safe here only because no cluster exists yet. Once a host is a cluster
-        # member, rolling replacement must drain it before restarting. The driver decision comes
-        # from durable boot state, while the feature decisions come from Server Manager's own
-        # reboot_required results; none depends on this invocation's changed flags.
+        # The driver decision comes from durable boot state, while the feature decisions come
+        # from Server Manager's own reboot_required results; none depends on changed flags.
+        - name: 'PROCESS | Decide Whether The Cluster Prerequisites Require A Reboot'
+          ansible.builtin.set_fact:
+            __fileserver_prerequisite_reboot_required__: >-
+              {{ __fileserver_nvme_reboot_required__
+                 or (__fileserver_failover_clustering__.reboot_required
+                     | default(false) | bool)
+                 or (__fileserver_file_services__.reboot_required
+                     | default(false) | bool) }}
+
+        # Feature or driver drift can realistically appear after formation. This role has no
+        # cluster-wide rolling boundary, so it must stop before restarting a live member; the
+        # operator can then use the lifecycle that drains and resumes one node at a time.
+        - name: 'PROCESS | Read Whether This Host Is Already A Cluster Member'
+          when: __fileserver_prerequisite_reboot_required__
+          check_mode: false
+          register: '__fileserver_cluster_membership__'
+
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            script: |
+              $Ansible.Changed = $false
+              $Clusters = @(Get-Cluster -ErrorAction SilentlyContinue)
+              if ($Clusters.Count -gt 1) {
+                throw 'The local host returned more than one failover cluster identity.'
+              }
+              $Ansible.Result = [PSCustomObject]@{
+                is_member = $Clusters.Count -eq 1
+              }
+
+        - name: 'PROCESS | Refuse An Undrained Cluster-Member Reboot'
+          when:
+            - __fileserver_prerequisite_reboot_required__
+            - __fileserver_cluster_membership__.result.is_member | default(false) | bool
+
+          ansible.builtin.fail:
+            msg: >-
+              This cluster member owes a prerequisite reboot because the AWS NVMe driver or a
+              Windows feature drifted. Refusing an undrained fleet restart; drain, reboot, and
+              resume one cluster node at a time before rerunning this role.
+
+        # Concurrent restarts are safe only before formation, when none of these hosts belongs to
+        # a cluster. The member guard above fails the realistic maintenance-drift path instead.
         - name: 'PROCESS | Reboot When The Cluster Prerequisites Require It'
           when: >-
-            __fileserver_nvme_reboot_required__
-            or (__fileserver_failover_clustering__.reboot_required | default(false) | bool)
-            or (__fileserver_file_services__.reboot_required | default(false) | bool)
+            __fileserver_prerequisite_reboot_required__
+            and not (__fileserver_cluster_membership__.result.is_member
+                     | default(false) | bool)
 
           ansible.windows.win_reboot:
             boot_time_command: >-

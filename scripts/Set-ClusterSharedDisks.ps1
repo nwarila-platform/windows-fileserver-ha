@@ -183,7 +183,6 @@ $Actions = [System.Collections.Generic.List[System.String]]::new()
 If ($Null -eq $Before.resource) {
   $Actions.Add('adopt_disk')
   $Actions.Add('set_possible_owners')
-  $Actions.Add('start_disk')
 } Else {
   $CurrentOwners = @($Before.possible_owners | ForEach-Object -Process { $PSItem.ToLowerInvariant() } | Sort-Object)
   $DesiredOwners = @($Owners | ForEach-Object -Process { $PSItem.ToLowerInvariant() } | Sort-Object)
@@ -203,7 +202,8 @@ If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
   If ($Actions.Contains('set_possible_owners')) {
     $Null = $Resource | Set-ClusterOwnerNode -Owners $Owners
   }
-  If ($Actions.Contains('start_disk') -and ([System.String]$Resource.State -ne 'Online')) {
+  If ([System.String]$Resource.State -ne 'Online') {
+    If (-not $Actions.Contains('start_disk')) { $Actions.Add('start_disk') }
     $Null = Start-ClusterResource -InputObject $Resource -Wait 300
   }
   $After = & $GetDeclaredDiskState -Cluster $ClusterName -Function ([System.String]$Disk.Function) -VolumeId $VolumeId -Owners $Owners

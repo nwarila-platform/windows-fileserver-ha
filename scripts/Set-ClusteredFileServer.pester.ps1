@@ -56,7 +56,11 @@ BeforeAll {
     $global:FsHaRolePresent = $True
     $global:FsHaRoleGroup.State = 'Online'
     $global:FsHaRoleGroup.OwnerNode = $script:Owners[0]
-    $global:FsHaRoleOwners = @($script:Owners)
+    # Add-ClusterFileServerRole has no preferred-owner parameter; creation therefore cannot
+    # fabricate the declared two-node preference that Set-ClusterOwnerNode owns.
+    $global:FsHaRoleOwners = @(
+      'tcnaw-hafs01a', 'tcnaw-hafs02a', 'tcnaw-hafs01b', 'tcnaw-hafs02b'
+    )
     $HomeResource = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.ResourceType -eq 'Physical Disk' })[0]
     $HomeResource.OwnerGroup = $Name
     $global:FsHaRoleResources += New-Resource -Name 'File Server Name' -Type 'Network Name' -Group $Name
@@ -153,17 +157,23 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleWrites | Should -HaveCount 0
   }
 
-  It 'creates an absent role with exact static and derived ignored network arguments' {
+  It 'creates an absent role then converges the residual preferred-owner contract' {
     $global:FsHaRolePresent = $False
     $global:FsHaRoleResources = @($global:FsHaRoleResources[0])
     $global:FsHaRoleResources[0].OwnerGroup = 'Available Storage'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
-    $global:FsHaRoleWrites | Should -HaveCount 1
+    $global:FsHaRoleWrites.Command | Should -Be @('Create', 'Owners')
     $global:FsHaRoleWrites[0].Command | Should -Be 'Create'
     $global:FsHaRoleWrites[0].StaticAddress | Should -Be $script:Addresses
     $global:FsHaRoleWrites[0].IgnoreNetwork | Should -Be @('Cluster Network 3', 'Cluster Network 4')
     $global:FsHaRoleWrites[0].Storage | Should -Be 'Cluster Disk 9'
     $global:FsHaRoleWrites[0].Wait | Should -Be 600
+    $global:FsHaRoleWrites[1].Group | Should -Be 'TCNAW-HAFS01'
+    $global:FsHaRoleWrites[1].Owners | Should -Be $script:Owners
+
+    $global:FsHaRoleWrites = @()
+    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
+    $global:FsHaRoleWrites | Should -HaveCount 0
   }
 
   It 'corrects preferred-owner drift without bouncing the group' {

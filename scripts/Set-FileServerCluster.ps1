@@ -108,7 +108,8 @@ $GetClusterCoreState = {
   $CoreGroups = @(Get-ClusterGroup -Cluster $Name | Where-Object -FilterScript { [System.String]$PSItem.GroupType -eq 'Cluster' })
   If ($CoreGroups.Count -ne 1) { Throw ('Cluster {0} must expose exactly one core group.' -f $Name) }
   $CoreGroupName = [System.String]$CoreGroups[0].Name
-  $IpResources = @(Get-ClusterResource -Cluster $Name | Where-Object -FilterScript {
+  $Resources = @(Get-ClusterResource -Cluster $Name)
+  $IpResources = @($Resources | Where-Object -FilterScript {
       [System.String]$PSItem.ResourceType -eq 'IP Address' -and [System.String]$PSItem.OwnerGroup -eq $CoreGroupName
     })
   $Addresses = @(
@@ -121,10 +122,11 @@ $GetClusterCoreState = {
     }
   )
   [PSCustomObject]@{
-    cluster   = $Cluster
-    name      = [System.String]$Cluster.Name
-    nodes     = @($Nodes | ForEach-Object -Process { [PSCustomObject]@{ name = [System.String]$PSItem.Name; state = [System.String]$PSItem.State } })
-    addresses = $Addresses
+    cluster        = $Cluster
+    name           = [System.String]$Cluster.Name
+    nodes          = @($Nodes | ForEach-Object -Process { [PSCustomObject]@{ name = [System.String]$PSItem.Name; state = [System.String]$PSItem.State } })
+    addresses      = $Addresses
+    physical_disks = @($Resources | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'Physical Disk' })
   }
 }
 
@@ -187,6 +189,9 @@ If (-not $Ansible.CheckMode -or $Actions.Count -eq 0) {
     @($After.nodes | Where-Object -FilterScript { $PSItem.state -ne 'Up' }).Count -gt 0 -or
     @(Compare-Object -ReferenceObject $DesiredAddresses -DifferenceObject $AfterAddresses).Count -gt 0) {
     Throw ('Cluster {0} failed exact node/state/address readback.' -f $ClusterName)
+  }
+  If ($Actions.Contains('create_cluster') -and $After.physical_disks.Count -ne 0) {
+    Throw ('Cluster {0} auto-added Physical Disk resources despite the -NoStorage formation contract.' -f $ClusterName)
   }
 }
 

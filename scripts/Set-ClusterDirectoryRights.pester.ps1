@@ -82,7 +82,11 @@ BeforeAll {
     $Acl
   }
 
-  Function Get-ADUser { Param ($Identity) [PSCustomObject]@{ SID = $global:StubAccountSid } }
+  Function Get-ADUser {
+    Param ($Identity)
+    If ($global:StubFailInitialRead) { Throw 'The initial directory read failed.' }
+    [PSCustomObject]@{ SID = $global:StubAccountSid }
+  }
 
   Function Get-ADComputer {
     Param ($Identity)
@@ -133,6 +137,7 @@ BeforeAll {
     $global:StubAcl = @{}
     foreach ($k in $Acl.Keys) { $global:StubAcl[$k] = $Acl[$k] }
     $global:StubSetAclCalls = 0
+    $global:StubFailInitialRead = $False
   }
 
   Function New-AnsibleContext {
@@ -275,6 +280,16 @@ Describe 'Set-ClusterDirectoryRights' {
 
       $global:Ansible.Changed | Should -BeFalse
       $global:Ansible.Result.msg | Should -Be 'Cluster directory rights already converged; no change.'
+    }
+
+    It 'settles Changed false before an initial directory read can fail' {
+      Reset-Stubs -Acl @{}
+      New-AnsibleContext
+      $global:StubFailInitialRead = $True
+
+      { Invoke-Script } | Should -Throw '*initial directory read failed*'
+      $global:Ansible.Changed | Should -BeFalse
+      $global:StubSetAclCalls | Should -Be 0
     }
 
     It 'reports the pending grants but writes nothing in check mode' {

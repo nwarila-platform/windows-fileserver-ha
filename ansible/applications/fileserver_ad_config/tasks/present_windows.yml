@@ -33,12 +33,27 @@
 
 #region ------ [ Process: Cluster Name Object ] ---------------------------------------------- #
 
-# Prestaged DISABLED: an enabled, unused computer account is a standing credential, and cluster
-# formation enables the object itself once it takes ownership.
+# Fresh prestaging lands DISABLED: an enabled, unused computer account is a standing credential.
+# Once formation enables the object, maintenance must omit 'enabled' so the cluster-owned state
+# is preserved. The existence read makes those two lifecycle states explicit.
+- name: 'BEGIN | Read The Cluster Name Object'
+  check_mode: false
+  changed_when: false
+  register: '__fileserver_ad_config_cluster_object__'
+
+  microsoft.ad.object_info:
+    filter: >-
+      sAMAccountName -eq '{{ fileserver_ad_config_running.cluster.name }}$'
+    include_deleted: false
+    properties: []
+
 - name: 'PROCESS | Ensure The Cluster Name Object'
 
   microsoft.ad.computer:
-    enabled: false
+    enabled: >-
+      {{ false
+         if (__fileserver_ad_config_cluster_object__.objects | length == 0)
+         else omit }}
     identity: "{{ fileserver_ad_config_running.cluster.name }}"
     name: "{{ fileserver_ad_config_running.cluster.name }}"
     path: "{{ fileserver_ad_config_running.cluster.path }}"
@@ -49,12 +64,26 @@
 
 #region ------ [ Process: File Server Access Point Object ] ---------------------------------- #
 
-# Prestaged DISABLED for the same reason as the cluster's own object: the cluster takes ownership
-# of an object that already exists, so it never needs the right to create one.
+# Fresh prestaging lands DISABLED for the same reason as the cluster's own object. A later read
+# finds the object and omits 'enabled', so a maintenance run cannot disable the live access point.
+- name: 'BEGIN | Read The File Server Access Point Object'
+  check_mode: false
+  changed_when: false
+  register: '__fileserver_ad_config_file_server_object__'
+
+  microsoft.ad.object_info:
+    filter: >-
+      sAMAccountName -eq '{{ fileserver_ad_config_running.file_server.name }}$'
+    include_deleted: false
+    properties: []
+
 - name: 'PROCESS | Ensure The File Server Access Point Object'
 
   microsoft.ad.computer:
-    enabled: false
+    enabled: >-
+      {{ false
+         if (__fileserver_ad_config_file_server_object__.objects | length == 0)
+         else omit }}
     identity: "{{ fileserver_ad_config_running.file_server.name }}"
     name: "{{ fileserver_ad_config_running.file_server.name }}"
     path: "{{ fileserver_ad_config_running.file_server.path }}"
@@ -76,14 +105,14 @@
 - name: 'PROCESS | Ensure The Cluster Directory Rights'
 
   ansible.windows.win_powershell:
-    script: "{{ lookup('ansible.builtin.file', 'Set-ClusterDirectoryRights.ps1') }}"
+    # The result carries a list of objects; the module's default depth would flatten them to text.
+    depth: 3
+    error_action: 'stop'
     parameters:
       AccountName: "{{ fileserver_ad_config_running.service_account.name }}"
       ClusterName: "{{ fileserver_ad_config_running.cluster.name }}"
       FileServerName: "{{ fileserver_ad_config_running.file_server.name }}"
-    error_action: 'stop'
-    # The result carries a list of objects; the module's default depth would flatten them to text.
-    depth: 3
+    script: "{{ lookup('ansible.builtin.file', 'Set-ClusterDirectoryRights.ps1') }}"
 
 #endregion --- [ Process: Cluster Directory Rights ] ----------------------------------------- #
 

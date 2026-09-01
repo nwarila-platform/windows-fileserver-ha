@@ -10,3 +10,102 @@
 #
 # =========================================================================================== #
 ---
+- name: 'VALIDATE | Require The Merged Directory Configuration Shape'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - fileserver_ad_config_running is mapping
+      - fileserver_ad_config_running.service_account | default(none) is mapping
+      - fileserver_ad_config_running.cluster | default(none) is mapping
+      - fileserver_ad_config_running.file_server | default(none) is mapping
+      - fileserver_ad_config_running.nodes | default(none) is mapping
+      - fileserver_ad_config_running.nodes | default({}, true) | length > 0
+    fail_msg: >-
+      Refusing to run: fileserver_ad_config must be a map containing service_account, cluster,
+      file_server, and nodes maps. A caller override probably replaced one of the role's
+      defaulted maps with a scalar or list.
+    quiet: true
+
+- name: 'VALIDATE | Require The Directory Account And Computer Object Inputs'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_ou_dn_pattern__: >-
+      ^OU=[^,=]+(?:,OU=[^,=]+)*,(?:DC=[A-Za-z0-9-]+,)*DC=[A-Za-z0-9-]+$
+  ansible.builtin.assert:
+    that:
+      - fileserver_ad_config_running.service_account.name | default(none) is string
+      - fileserver_ad_config_running.service_account.name | default('', true) is match('^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$')
+      - fileserver_ad_config_running.service_account.password | default(none) is string
+      - fileserver_ad_config_running.service_account.password | default('', true) | length > 0
+      - fileserver_ad_config_running.cluster.name | default(none) is string
+      - fileserver_ad_config_running.cluster.name | default('', true) is match('^[A-Za-z0-9][A-Za-z0-9-]{0,14}$')
+      - fileserver_ad_config_running.file_server.name | default(none) is string
+      - fileserver_ad_config_running.file_server.name | default('', true) is match('^[A-Za-z0-9][A-Za-z0-9-]{0,14}$')
+      - >-
+        fileserver_ad_config_running.cluster.name | default('', true) | lower
+        != fileserver_ad_config_running.file_server.name | default('', true) | lower
+      - fileserver_ad_config_running.service_account.path | default(none) is string
+      - fileserver_ad_config_running.service_account.path | default('', true) is match(__fileserver_ad_config_ou_dn_pattern__)
+      - fileserver_ad_config_running.cluster.path | default(none) is string
+      - fileserver_ad_config_running.cluster.path | default('', true) is match(__fileserver_ad_config_ou_dn_pattern__)
+      - fileserver_ad_config_running.file_server.path | default(none) is string
+      - fileserver_ad_config_running.file_server.path | default('', true) is match(__fileserver_ad_config_ou_dn_pattern__)
+    fail_msg: >-
+      Refusing to run: fileserver_ad_config.service_account must contain a supported account
+      name, a non-empty password, and an OU distinguished-name path; cluster and file_server
+      must each contain a distinct supported computer name and an OU distinguished-name path.
+    quiet: true
+
+- name: 'VALIDATE | Require The Static DNS Record Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_dns_label_pattern__: '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$'
+    __fileserver_ad_config_dns_pattern__: >-
+      ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$
+    __fileserver_ad_config_ipv4_pattern__: >-
+      ^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$
+    __fileserver_ad_config_record_addresses__: >-
+      {{ record.value
+         if (record.value is sequence and record.value is not string)
+         else [record.value] }}
+  ansible.builtin.assert:
+    that:
+      - fileserver_ad_config_running.dns_zone | default(none) is string
+      - fileserver_ad_config_running.dns_zone | default('', true) is match(__fileserver_ad_config_dns_pattern__)
+      - fileserver_ad_config_running.nodes | length > 0
+      - record.key is string
+      - record.key | string is match(__fileserver_ad_config_dns_label_pattern__)
+      - >-
+        record.value is string
+        or (record.value is sequence and record.value is not string)
+      - __fileserver_ad_config_record_addresses__ | length > 0
+      - __fileserver_ad_config_record_addresses__ | reject('string') | list | length == 0
+      - >-
+        __fileserver_ad_config_record_addresses__
+        | map('string') | reject('match', __fileserver_ad_config_ipv4_pattern__)
+        | list | length == 0
+    fail_msg: >-
+      Refusing to run: fileserver_ad_config.dns_zone must be a DNS name, and each nodes entry
+      must map one DNS label to an IPv4 address string or a non-empty list of IPv4 address
+      strings.
+    quiet: true
+  loop: "{{ fileserver_ad_config_running.nodes | dict2items }}"
+  loop_control:
+    label: "{{ record.key | default('malformed DNS record') }}"
+    loop_var: 'record'
+
+- name: 'VALIDATE | Require Unique Static DNS Addresses'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_addresses__: >-
+      {{ fileserver_ad_config_running.nodes | dict2items
+         | map(attribute='value') | flatten | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        __fileserver_ad_config_addresses__ | unique | list | length
+        == __fileserver_ad_config_addresses__ | length
+    fail_msg: >-
+      Refusing to run: every fileserver_ad_config.nodes IPv4 address must be unique across the
+      static DNS declarations.
+    quiet: true

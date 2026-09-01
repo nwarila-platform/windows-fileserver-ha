@@ -83,27 +83,27 @@
   SupportsShouldProcess = $True
 )]
 Param (
-  [Parameter(DontShow = $False, Mandatory = $False, ParameterSetName = 'default')]
+  [Parameter(DontShow = $False, Mandatory = $False, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [ValidatePattern('^[0-5][0-4][0-3]$')]
   [System.String]
   $DebugLevel = '103',
 
-  [Parameter(DontShow = $False, Mandatory = $False, ParameterSetName = 'default')]
+  [Parameter(DontShow = $False, Mandatory = $False, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [ValidatePattern('^[0-5]{6}$')]
   [System.String]
   $LogLevel = '002223',
 
-  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default')]
+  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [ValidateNotNullOrEmpty()]
   [System.String]
   $AccountName,
 
-  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default')]
+  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [ValidateNotNullOrEmpty()]
   [System.String]
   $ClusterName,
 
-  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default')]
+  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [ValidateNotNullOrEmpty()]
   [System.String]
   $FileServerName
@@ -182,6 +182,7 @@ If ($StandaloneRun) {
     Result    = $Null
   }
 }
+$Ansible.Changed = $False
 
 Write-Debug -Message:'Exiting Stage: Initialization'
 #endregion --- [ Initialization ] ------------------------------------------------------------ #
@@ -194,7 +195,6 @@ Write-Debug -Message:'Entering Stage: Main'
 # parser has to reimplement and gets wrong on conditional ACEs, which may quote parentheses.
 # The directory reports an ACE's principal as an account name, not a SID, so the comparison has
 # to translate before it can mean anything. An identity that no longer resolves is not our grant.
-# Declared as script blocks rather than functions, which is this repository's canonical anatomy.
 $ResolveAceSid = {
   Param ([System.Object]$Identity)
 

@@ -40,7 +40,7 @@ BeforeAll {
   Function Add-ClusterDisk {
     Param ([System.Object]$InputObject, [System.String]$Cluster)
     $global:FsHaDiskWrites += [PSCustomObject]@{ Command = 'Add'; InputObject = $InputObject; Cluster = $Cluster }
-    $Resource = New-DiskResource -Guid $global:FsHaDiskAddedGuid
+    $Resource = New-DiskResource -Guid $global:FsHaDiskAddedGuid -State $global:FsHaDiskAddedState
     If (-not $global:FsHaDiskFreezeAdd) {
       $global:FsHaDiskResources += $Resource
       $global:FsHaDiskOwners[$Resource.Name] = @('tcnaw-hafs01a', 'tcnaw-hafs02a', 'tcnaw-hafs01b', 'tcnaw-hafs02b')
@@ -60,7 +60,7 @@ BeforeAll {
 }
 
 AfterAll {
-  Remove-Variable -Name 'FsHaDiskLocal', 'FsHaDiskResources', 'FsHaDiskOwners', 'FsHaDiskWrites', 'FsHaDiskFreezeAdd', 'FsHaDiskFreezeOwners', 'FsHaDiskFreezeStart', 'FsHaDiskAddedGuid' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'FsHaDiskLocal', 'FsHaDiskResources', 'FsHaDiskOwners', 'FsHaDiskWrites', 'FsHaDiskFreezeAdd', 'FsHaDiskFreezeOwners', 'FsHaDiskFreezeStart', 'FsHaDiskAddedGuid', 'FsHaDiskAddedState' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-ClusterSharedDisks' {
@@ -75,6 +75,7 @@ Describe 'Set-ClusterSharedDisks' {
     $global:FsHaDiskFreezeOwners = $False
     $global:FsHaDiskFreezeStart = $False
     $global:FsHaDiskAddedGuid = '11111111-1111-1111-1111-111111111111'
+    $global:FsHaDiskAddedState = 'Online'
   }
   AfterEach { Remove-AnsibleContext }
 
@@ -88,11 +89,22 @@ Describe 'Set-ClusterSharedDisks' {
   It 'adopts only the exact local disk object and sets declared owners' {
     $global:FsHaDiskResources = @()
     $global:FsHaDiskOwners = @{}
-    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Disk $script:Declaration | Out-Null
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Disk $script:Declaration | ConvertFrom-Json
     $global:FsHaDiskWrites.Command | Should -Be @('Add', 'Owners')
+    $Result.actions | Should -Be @('adopt_disk', 'set_possible_owners')
     $global:FsHaDiskWrites[0].InputObject | Should -Be $global:FsHaDiskLocal[0]
     $global:FsHaDiskWrites[0].Cluster | Should -Be 'TCNAW-FSCL01'
     $global:FsHaDiskWrites[1].Owners | Should -Be $script:Owners
+  }
+
+  It 'reports and performs a start when adoption returns an offline resource' {
+    $global:FsHaDiskResources = @()
+    $global:FsHaDiskOwners = @{}
+    $global:FsHaDiskAddedState = 'Offline'
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Disk $script:Declaration | ConvertFrom-Json
+    $global:FsHaDiskWrites.Command | Should -Be @('Add', 'Owners', 'Start')
+    $Result.actions | Should -Be @('adopt_disk', 'set_possible_owners', 'start_disk')
   }
 
   It 'repairs owner-only drift without a second adoption' {
