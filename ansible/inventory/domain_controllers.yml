@@ -1,0 +1,30 @@
+# =========================================================================================== #
+# File: 'ansible/inventory/domain_controllers.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# The domain controllers this repository configures, named rather than discovered. The fleet
+# inventory next to this file is dynamic because those instances are ephemeral -- created and
+# destroyed by every run, so an address written down would be wrong by the time it was read. A
+# domain controller is the opposite: it is standing infrastructure that outlives every run, so it
+# is written down.
+#
+# This inventory is used only by the directory-account playbook, which runs against a domain
+# controller and never against a cluster node.
+#
+# =========================================================================================== #
+---
+domain_controllers:
+  hosts:
+    tcnhq-dc01:
+      ansible_host: '10.69.112.4'
+  vars:
+    ansible_connection: 'ssh'
+    ansible_port: 22
+    ansible_user: 'Administrator'
+    # The controller's OpenSSH DefaultShell registry value is absent, so it serves cmd -- the
+    # OpenSSH default. The fleet's nodes serve PowerShell only because this repository's bootstrap
+    # flips them; a domain controller is not ours to bootstrap, so it is addressed as it is.
+    ansible_shell_type: 'cmd'
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=accept-new -o ServerAliveInterval=30 -o ServerAliveCountMax=20'
+    platform: 'Windows'
+    ENV: 'test'

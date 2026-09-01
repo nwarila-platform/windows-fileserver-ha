@@ -1,0 +1,89 @@
+# =========================================================================================== #
+# File: 'ansible/playbooks/fileserver-ad-config-local.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Creates and maintains the directory service account a Windows failover cluster is formed with.
+# Runs against a DOMAIN CONTROLLER, never against a cluster node, so it addresses the static
+# inventory beside the dynamic one -- a domain controller is standing infrastructure, and an
+# address written down for it stays true.
+#
+# This is deliberately not part of the fleet converge. Joining a machine to a directory needs the
+# least credential that can do it; forming a cluster needs a principal that is a local
+# administrator on every node and owns the cluster's computer object. Both computer objects are
+# prestaged here, so no principal is granted the right to CREATE computer objects anywhere.
+# Separating the two keeps the everyday path free of rights it does not need.
+#
+# While the deployment is under development this is run locally, because the CI runner has no
+# route to a domain controller. The key that reaches the controller is supplied for the run that
+# needs it and is not stored.
+#
+# =========================================================================================== #
+---
+- name: 'PLAY | Directory Service Account (domain controller, manual)'
+  hosts: 'domain_controllers'
+  gather_facts: false
+  become: false
+  any_errors_fatal: true
+
+  #region ------ [ Play: Variables ] ---------------------------------------------------------- #
+  vars:
+    # Named once so the contract check and the role invocation cannot drift to different objects.
+    __password_url__: >-
+      s3://{{ aws_account_id }}-ansible/windows-fileserver-ha/svc-fscluster-mgr_password.secret
+  #endregion --- [ Play: Variables ] ---------------------------------------------------------- #
+
+  #region ------ [ Play: Inventory Contract ] ------------------------------------------------- #
+  pre_tasks:
+
+    # Account-derived values are passed EXPLICITLY on the invocation, so the play and the identity
+    # reading the secret cannot disagree.
+    - name: 'INVENTORY | Require The AWS Deployment Identity'
+      ansible.builtin.assert:
+        that:
+          - aws_account_id is defined
+          - aws_account_id is match('^[0-9]{12}$')
+        fail_msg: >-
+          aws_account_id must be provided as an extra-var. It composes the S3 URL the cluster
+          service account's password is read from.
+        quiet: true
+
+    # A play variable holding a lookup is a lazy template: every consumer re-evaluates it. Reading
+    # the secret into a fact materialises it ONCE, so the check below and the role invocation
+    # cannot reach different values, and the read happens here rather than inside the role's
+    # no_log merge, where the cause of a failure would be censored.
+    - name: 'INVENTORY | Resolve The Cluster Service Account Password'
+      block:
+
+        - name: 'INVENTORY | Read The Cluster Service Account Password'
+          no_log: true
+
+          ansible.builtin.set_fact:
+            __fileserver_ad_password__: "{{ lookup('secret', __password_url__) }}"
+
+      # The lookup's own errors name the URL and never the value, but they are raised inside a
+      # no_log task, so the cause is restated here where it can actually be read.
+      rescue:
+
+        - name: 'INVENTORY | Report That The Password Could Not Be Read'
+          ansible.builtin.fail:
+            msg: >-
+              The cluster service account password could not be read from {{ __password_url__ }}.
+              Check that the object exists, that this identity may read it, and that boto3 has
+              credentials.
+
+  #endregion --- [ Play: Inventory Contract ] ------------------------------------------------- #
+
+  #region ------ [ Roles ] -------------------------------------------------------------------- #
+  roles:
+
+    #region ------ [ Roles: Directory Account ] ----------------------------------------------- #
+    # The lookup resolves the password on the controller and passes it straight to the role. The
+    # URL carries the account id, so it is composed here rather than defaulted in the role.
+    - role: 'fileserver_ad_config'
+      vars:
+        fileserver_ad_config:
+          service_account:
+            password: "{{ __fileserver_ad_password__ }}"
+    #endregion --- [ Roles: Directory Account ] ----------------------------------------------- #
+
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #

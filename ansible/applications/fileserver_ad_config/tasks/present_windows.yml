@@ -1,0 +1,110 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/present_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# What this role does to a domain controller when state is 'present'. Regions are added here one
+# at a time, each a single action, and each proven by running the whole playbook twice.
+#
+# =========================================================================================== #
+---
+
+#region ------ [ Process: Cluster Service Account ] ------------------------------------------ #
+
+# 'when_changed' authenticates as the account to decide whether the password differs, so the
+# account must be enabled for that comparison to succeed rather than force a reset every run.
+# The password DOES expire, by policy. Once it does, the comparison fails and this task resets it
+# to the stored value, restarting the clock -- drift the run corrects and honestly reports.
+- name: 'PROCESS | Ensure The Cluster Service Account'
+  no_log: true
+
+  microsoft.ad.user:
+    account_locked: false
+    enabled: true
+    name: "{{ fileserver_ad_config_running.service_account.name }}"
+    password: "{{ fileserver_ad_config_running.service_account.password }}"
+    password_never_expires: false
+    path: "{{ fileserver_ad_config_running.service_account.path }}"
+    sam_account_name: "{{ fileserver_ad_config_running.service_account.name }}"
+    state: 'present'
+    update_password: 'when_changed'
+    user_cannot_change_password: true
+
+#endregion --- [ Process: Cluster Service Account ] ------------------------------------------ #
+
+#region ------ [ Process: Cluster Name Object ] ---------------------------------------------- #
+
+# Prestaged DISABLED: an enabled, unused computer account is a standing credential, and cluster
+# formation enables the object itself once it takes ownership.
+- name: 'PROCESS | Ensure The Cluster Name Object'
+
+  microsoft.ad.computer:
+    enabled: false
+    identity: "{{ fileserver_ad_config_running.cluster.name }}"
+    name: "{{ fileserver_ad_config_running.cluster.name }}"
+    path: "{{ fileserver_ad_config_running.cluster.path }}"
+    sam_account_name: "{{ fileserver_ad_config_running.cluster.name }}$"
+    state: 'present'
+
+#endregion --- [ Process: Cluster Name Object ] ---------------------------------------------- #
+
+#region ------ [ Process: File Server Access Point Object ] ---------------------------------- #
+
+# Prestaged DISABLED for the same reason as the cluster's own object: the cluster takes ownership
+# of an object that already exists, so it never needs the right to create one.
+- name: 'PROCESS | Ensure The File Server Access Point Object'
+
+  microsoft.ad.computer:
+    enabled: false
+    identity: "{{ fileserver_ad_config_running.file_server.name }}"
+    name: "{{ fileserver_ad_config_running.file_server.name }}"
+    path: "{{ fileserver_ad_config_running.file_server.path }}"
+    sam_account_name: "{{ fileserver_ad_config_running.file_server.name }}$"
+    state: 'present'
+
+#endregion --- [ Process: File Server Access Point Object ] ---------------------------------- #
+
+#region ------ [ Process: Cluster Directory Rights ] ----------------------------------------- #
+
+# microsoft.ad exposes nTSecurityDescriptor only as a whole-value attribute, so adding one ACE
+# through it would mean rewriting every existing and inherited ACE. The script adds just the two
+# the cluster needs and computes its own drift, so a converged directory reports ok, not changed.
+# Both objects are prestaged, so neither principal is granted the right to CREATE anything.
+# Parameters cross as typed module options — never Jinja spliced into the script source.
+#
+# The referenced .ps1 is MATERIALIZED from scripts/ by scripts/materialize-role-scripts.sh
+# (the role tracks only files/Set-ClusterDirectoryRights.ps1.stub); run it before this role.
+- name: 'PROCESS | Ensure The Cluster Directory Rights'
+
+  ansible.windows.win_powershell:
+    script: "{{ lookup('ansible.builtin.file', 'Set-ClusterDirectoryRights.ps1') }}"
+    parameters:
+      AccountName: "{{ fileserver_ad_config_running.service_account.name }}"
+      ClusterName: "{{ fileserver_ad_config_running.cluster.name }}"
+      FileServerName: "{{ fileserver_ad_config_running.file_server.name }}"
+    error_action: 'stop'
+    # The result carries a list of objects; the module's default depth would flatten them to text.
+    depth: 3
+
+#endregion --- [ Process: Cluster Directory Rights ] ----------------------------------------- #
+
+#region ------ [ Process: Cluster Node Address Records ] ------------------------------------- #
+
+# Static because the addresses are static: the deployment assigns them, so the directory declares
+# them. 'aging: false' is that statement in DNS terms -- a scavenger must never collect a record
+# the deployment owns.
+- name: 'PROCESS | Ensure The Cluster Node Address Records'
+  loop: "{{ fileserver_ad_config_running.nodes | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+  community.windows.win_dns_record:
+    aging: false
+    allow_update_any: false
+    name: "{{ item.key }}"
+    state: 'present'
+    ttl: 300
+    type: 'A'
+    value: "{{ [item.value] | flatten }}"
+    zone: "{{ fileserver_ad_config_running.dns_zone }}"
+
+#endregion --- [ Process: Cluster Node Address Records ] ------------------------------------- #

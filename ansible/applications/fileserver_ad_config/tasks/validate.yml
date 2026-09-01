@@ -1,0 +1,12 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/validate.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Guards on the merged running configuration, run by the loader before any task acts. A guard
+# here names an input the caller controls; it does not defend against states this pipeline
+# cannot produce.
+#
+# Regions are added one at a time. Each new region guards its own inputs here.
+#
+# =========================================================================================== #
+---

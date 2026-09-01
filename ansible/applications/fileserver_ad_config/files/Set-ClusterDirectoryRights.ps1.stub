@@ -1,0 +1,7 @@
+# Build marker (org three-file convention — powershell-template
+# docs/reference/pester-pair-testing.md §1). The ansible-build resolves this
+# stub by copying the script named below to 'Set-ClusterDirectoryRights.ps1' in
+# this directory: run scripts/materialize-role-scripts.sh before executing or
+# linting the role. The materialized .ps1 is a build artifact — never commit
+# it; the script is developed, reviewed, and tested only at the path below.
+scripts/Set-ClusterDirectoryRights.ps1

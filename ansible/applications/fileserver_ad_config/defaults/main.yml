@@ -1,0 +1,58 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/defaults/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# Every input this role takes, with the value it takes when the caller says nothing. The loader
+# merges this with the OS overlay in vars/ and then with the caller's own overrides, so a value
+# here is the floor rather than a suggestion.
+#
+# Regions are added one at a time. Each new region declares its inputs here.
+#
+# =========================================================================================== #
+---
+fileserver_ad_config_defaults:
+
+  #region ------ [ Defaults: Cluster Service Account ] --------------------------------------- #
+  # The account a failover cluster is formed with. Its password is not defaulted here: the URL
+  # that resolves it carries the account id, so the caller composes it.
+  service_account:
+    name: 'svc-fscluster-mgr'
+    path: 'OU=Domain Service Accounts,DC=tcn,DC=trinitytechnicalservices,DC=com'
+  #endregion --- [ Defaults: Cluster Service Account ] --------------------------------------- #
+
+  #region ------ [ Defaults: Cluster Name Object ] ------------------------------------------- #
+  # The cluster's own computer object, prestaged so forming the cluster needs Full Control on one
+  # object rather than the right to create computers anywhere in the OU.
+  cluster:
+    name: 'TCNAW-FSCL01'
+    path: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+  #endregion --- [ Defaults: Cluster Name Object ] ------------------------------------------- #
+
+  #region ------ [ Defaults: File Server Access Point ] -------------------------------------- #
+  # The name clients connect to. It is a SECOND computer object, prestaged for the same reason
+  # as the cluster's own: prestaging both means the cluster is never granted the right to create
+  # computer objects anywhere.
+  file_server:
+    name: 'TCNAW-HAFS01'
+    path: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+  #endregion --- [ Defaults: File Server Access Point ] -------------------------------------- #
+
+  #region ------ [ Defaults: Cluster Node Address Records ] ---------------------------------- #
+  # The nodes are statically addressed by the deployment, so their records are declared, not
+  # dynamically registered: a multi-homed member sends its dynamic update to the cloud resolver,
+  # which discards it, while the tunnel's namespace rule already sends RESOLUTION here. Records
+  # where the rule looks close that gap deterministically.
+  dns_zone: 'tcn.trinitytechnicalservices.com'
+  nodes:
+    tcnaw-hafs01a: '10.0.1.10'
+    tcnaw-hafs02a: '10.0.33.10'
+    tcnaw-hafs01b: '10.0.65.10'
+    tcnaw-hafs02b: '10.0.97.10'
+    # The file server's client access point publishes BOTH of its providers: the cluster cannot
+    # register dynamically in this environment (updates die at the cloud resolver), and a single
+    # static address would go stale on failover. Two records with a short TTL is what
+    # RegisterAllProvidersIP=1 would publish for this name; clients retry the dead provider.
+    tcnaw-hafs01:
+      - '10.0.1.12'
+      - '10.0.33.12'
+  #endregion --- [ Defaults: Cluster Node Address Records ] ---------------------------------- #
