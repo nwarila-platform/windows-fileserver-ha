@@ -87,7 +87,47 @@ all_systems = [
         private_ip             = "10.0.1.10"
         additional_private_ips = ["10.0.1.11", "10.0.1.12"]
         security_groups        = []
-        ingress                = []
+        ingress = [
+          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
+          # between members that fully trust one another. These four subnets exist for
+          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
         egress = [
           {
             description                  = "HTTPS out"
@@ -106,6 +146,43 @@ all_systems = [
             from_port                    = 1194
             to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The outbound half of the cluster east-west contract above.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -162,7 +239,47 @@ all_systems = [
         private_ip             = "10.0.33.10"
         additional_private_ips = ["10.0.33.11", "10.0.33.12"]
         security_groups        = []
-        ingress                = []
+        ingress = [
+          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
+          # between members that fully trust one another. These four subnets exist for
+          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
         egress = [
           {
             description                  = "HTTPS out"
@@ -181,6 +298,43 @@ all_systems = [
             from_port                    = 1194
             to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The outbound half of the cluster east-west contract above.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -236,7 +390,47 @@ all_systems = [
         private_ip             = "10.0.65.10"
         additional_private_ips = ["10.0.65.11", "10.0.65.12"]
         security_groups        = []
-        ingress                = []
+        ingress = [
+          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
+          # between members that fully trust one another. These four subnets exist for
+          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
         egress = [
           {
             description                  = "HTTPS out"
@@ -255,6 +449,43 @@ all_systems = [
             from_port                    = 1194
             to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The outbound half of the cluster east-west contract above.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -310,7 +541,47 @@ all_systems = [
         private_ip             = "10.0.97.10"
         additional_private_ips = ["10.0.97.11", "10.0.97.12"]
         security_groups        = []
-        ingress                = []
+        ingress = [
+          # A failover cluster is constant east-west traffic -- heartbeat, RPC, SMB --
+          # between members that fully trust one another. These four subnets exist for
+          # the cluster's nodes and their cluster addresses, and nothing else lives in them.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
         egress = [
           {
             description                  = "HTTPS out"
@@ -329,6 +600,43 @@ all_systems = [
             from_port                    = 1194
             to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The outbound half of the cluster east-west contract above.
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.0.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.32.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.64.0/19"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Cluster east-west"
+            ip_protocol                  = "-1"
+            from_port                    = null
+            to_port                      = null
+            cidr_ipv4                    = "10.0.96.0/19"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
@@ -414,7 +722,7 @@ shared_ebs_volumes = {
     region            = "us_east_1"
     availability_zone = "us-east-1a"
     aws_kms_alias     = "aws/ebs"
-    iops              = "3000"
+    iops              = "100"
     volume_size       = "100"
     tags = {
       Function = "Cluster Shared Volume (AZ A)"
@@ -428,7 +736,7 @@ shared_ebs_volumes = {
     region            = "us_east_1"
     availability_zone = "us-east-1b"
     aws_kms_alias     = "aws/ebs"
-    iops              = "3000"
+    iops              = "100"
     volume_size       = "100"
     tags = {
       Function = "Cluster Shared Volume (AZ B)"
