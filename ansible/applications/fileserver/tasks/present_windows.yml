@@ -187,7 +187,11 @@
             error_action: 'stop'
             script: |
               $Ansible.Changed = $false
-              $Clusters = @(Get-Cluster -ErrorAction SilentlyContinue)
+              $ClusterService = Get-Service -Name 'ClusSvc' -ErrorAction Stop
+              $Clusters = @()
+              if ($ClusterService.Status -eq 'Running') {
+                $Clusters = @(Get-Cluster -ErrorAction Stop)
+              }
               if ($Clusters.Count -gt 1) {
                 throw 'The local host returned more than one failover cluster identity.'
               }
