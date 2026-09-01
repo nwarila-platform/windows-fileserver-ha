@@ -194,7 +194,8 @@ Write-Debug -Message:'Entering Stage: Main'
 # parser has to reimplement and gets wrong on conditional ACEs, which may quote parentheses.
 # The directory reports an ACE's principal as an account name, not a SID, so the comparison has
 # to translate before it can mean anything. An identity that no longer resolves is not our grant.
-Function Resolve-AceSid {
+# Declared as script blocks rather than functions, which is this repository's canonical anatomy.
+$ResolveAceSid = {
   Param ([System.Object]$Identity)
 
   If ($Identity -is [System.Security.Principal.SecurityIdentifier]) {
@@ -207,7 +208,7 @@ Function Resolve-AceSid {
   }
 }
 
-Function Test-Grant {
+$TestGrant = {
   Param (
     [System.Object]$Acl,
     [System.String]$Sid
@@ -216,7 +217,7 @@ Function Test-Grant {
   [System.Boolean](
     $Acl.Access | Where-Object {
       $_.AccessControlType -eq 'Allow' -and
-      (Resolve-AceSid -Identity:$_.IdentityReference) -eq $Sid -and
+      (& $ResolveAceSid -Identity:$_.IdentityReference) -eq $Sid -and
       $_.ActiveDirectoryRights.HasFlag([System.DirectoryServices.ActiveDirectoryRights]::GenericAll) -and
       # An inherit-only ACE governs children, never the object carrying it, so it is not this grant.
       -not $_.PropagationFlags.HasFlag([System.Security.AccessControl.PropagationFlags]::InheritOnly)
@@ -247,7 +248,7 @@ $Applied = [System.Collections.Generic.List[System.Object]]::new()
 
 ForEach ($Grant In $Grants) {
   $Acl = Get-Acl -Path:$Grant.path
-  If (Test-Grant -Acl:$Acl -Sid:$Grant.sid) {
+  If (& $TestGrant -Acl:$Acl -Sid:$Grant.sid) {
     Continue
   }
 
@@ -272,7 +273,7 @@ ForEach ($Grant In $Grants) {
   Set-Acl -Path:$Grant.path -AclObject:$Acl
 
   # Success is verified against the directory, never against the absence of an exception.
-  If (-not (Test-Grant -Acl:(Get-Acl -Path:$Grant.path) -Sid:$Grant.sid)) {
+  If (-not (& $TestGrant -Acl:(Get-Acl -Path:$Grant.path) -Sid:$Grant.sid)) {
     Throw ('The {0} grant did not land on {1}.' -f $Grant.name, $Grant.path)
   }
 }

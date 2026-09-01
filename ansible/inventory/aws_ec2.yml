@@ -16,6 +16,8 @@
 groups:
   fileserver_nodes: "(aws_ec2_tags.Function | default('', true)) in ['Windows HA FileServer']"
   fileserver_witness: "(aws_ec2_tags.Function | default('', true)) in ['Windows FS Witness']"
+  fileserver_cluster_former: >-
+    (aws_ec2_tags.Name | default('', true) | lower) == 'tcnaw-hafs01a'
 
 #endregion --- [ This Repository ] ------------------------------------------------------------ #
 

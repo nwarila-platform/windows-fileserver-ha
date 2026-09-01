@@ -21,8 +21,10 @@
 
 - Repo: `windows-fileserver-ha`. Role: `fileserver` (bare capability name
   resolved via framework `roles_path`). Playbook: `fileserver-aws.yml`.
-  Inventory groups: `fileserver_nodes` (the four cluster nodes) and
-  `fileserver_witness` (the non-domain-joined file-share witness).
+  Inventory groups: `fileserver_nodes` (the four cluster nodes),
+  `fileserver_witness` (the non-domain-joined file-share witness), and overlapping
+  `fileserver_cluster_former` (the singleton `tcnaw-hafs01a` service-account formation host).
+  The former is selected by exact Name tag, never by sorting the node group.
 - Role defaults live under `<role>_defaults` in `defaults/main.yml`; the merged
   running config materializes as `<role>_running`; playbook overrides use the bare
   `<role>:` dict. (Loader v3 contract.)

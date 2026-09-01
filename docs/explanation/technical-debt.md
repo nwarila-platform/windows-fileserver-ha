@@ -12,24 +12,25 @@ but it does not run the deploy workflow's Terraform-format, workflow-lint, or IA
 and `actionlint`; the IAM reference documents remain reviewable in their tracked form.
 **Exit:** `scripts/verify.sh` gains the deploy-workflow checks and IAM checks.
 
-## TD-002 — Domain convergence and cluster bootstrap are not proven
+## TD-002 — Witness quorum is deferred
 
-**Gap:** Active Directory is mandatory for Storage Replica and clustered file roles. The
-playbook now declares the private-network and domain-member contracts for the four nodes, but
-their live convergence is not yet proven and the WSFC bootstrap is not implemented.
-**Containment:** The fileserver role fails closed (`END` guard in
-`tasks/present_windows.yml`) rather than reporting a host converged into an undefined state; the
-non-domain-joined witness is excluded from the domain-side play by its `hosts:` boundary.
-**Exit:** The tunnel and domain join converge on all four nodes, WSFC bootstrap lands, and the
-fail-closed guard advances to the next unimplemented cluster region.
+**Gap:** The implemented cluster remains `NodeMajority`. The intended witness is workgroup-joined
+and its security group has no inbound SMB path from the nodes; this implementation is forbidden
+from changing the witness security group or ENI.
+**Containment:** The final proof requires `NodeMajority` and reports workgroup file-share
+witness/quorum as NOT DONE. No witness credential, share, networking, or quorum mutation occurs.
+**Exit:** An authorized plan supplies a dedicated local credential, an exclusive SMB2+ witness
+share with exact filesystem/share rights, TCP/445 authorization, sensitive credential transport,
+and fresh quorum validation before changing the quorum model.
 
-## TD-003 — Shared storage is not cluster-ready
+## TD-003 — Cross-AZ data service is deferred
 
-**Gap:** The playbook prepares each io2 Multi-Attach volume as `D:` on exactly one node per pair,
-but the role does not yet enable NVMe persistent reservations or place the volumes under cluster
-ownership.
-**Containment:** Only the designated first node in each Availability Zone can initialize,
-partition, or format its pair's shared volume; the storage-dependent application surface remains
-behind the TD-002 fail-closed guard.
-**Exit:** A later region enables persistent reservations, reboots as required, validates the
-storage, and places the prepared volumes under cluster ownership without reformatting them.
+**Gap:** Both per-AZ disks are adopted into the cluster and constrained to their declared owner
+pairs, but only the AZ-a disk hosts a file-server role and encrypted CA `data` share. There is no
+AZ-b file-server role or Storage Replica relationship.
+**Containment:** The final proof requires the AZ-b disk to remain Online in `Available Storage`,
+absent from the AZ-a role, and reports both the AZ-b role and Storage Replica as NOT DONE. The
+implemented data service is not described as cross-AZ.
+**Exit:** An authorized plan creates the AZ-b role, configures Storage Replica between the exact
+volumes, and passes full planned and unplanned failover proof without weakening owner or access
+policy.

@@ -1,17 +1,18 @@
 # windows-fileserver-ha
 
-Highly available Windows Server 2025 file service: a four-node WSFC stretch cluster across two
-Availability Zones (two nodes per AZ on per-AZ shared storage), Storage Replica between the
-pairs, a non-domain-joined file-share witness in a third AZ, and an ephemeral AWS proof
-environment. Data-only consumer of the pinned nwarila-platform Terraform and Ansible
-frameworks.
+Target architecture: a four-node Windows Server 2025 WSFC stretch cluster across two
+Availability Zones, Storage Replica between per-AZ shared storage, and a workgroup file-share
+witness in a third AZ. The implemented service is deliberately narrower: one AZ-a clustered
+file-server role and its encrypted continuously available `data` share. This repository is a
+data-only consumer of the pinned nwarila-platform Terraform and Ansible frameworks.
 
 ## Status
 
-Scaffold in progress. The Ansible tree, the PowerShell development model, their quality gates,
-the guest and domain preparation chain, and the deploy surface are in place; live convergence of
-that chain remains to be proven, and the cluster implementation is not — the application role
-**fails closed** until it lands. Every gap is recorded with exit criteria in
+The fleet playbook codifies a four-node cluster, adopts both EBS volumes by runtime identity,
+constrains each disk to its declared owner pair, creates `TCNAW-HAFS01` on the AZ-a disk, and
+publishes `\\TCNAW-HAFS01\data` with exact protected NTFS and share ACLs. Its ungated final
+readback proves that implemented surface on every run. Witness quorum, the AZ-b file-server role,
+and Storage Replica remain explicitly deferred with exit criteria in
 [docs/explanation/technical-debt.md](docs/explanation/technical-debt.md).
 
 ## The PowerShell development model
@@ -41,8 +42,8 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | Path | Contents |
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
-| `ansible/playbooks/fileserver-aws.yml` | Asserts the ratified five-instance shape, prepares every guest, prepares the four domain members and their shared disks, then applies the fileserver role. |
-| `ansible/inventory/` | The tracked EC2 dynamic inventory, why no static inventory is used, and its group contract (`fileserver_nodes`, `fileserver_witness`). |
+| `ansible/playbooks/fileserver-aws.yml` | Prepares the fleet, applies the Administrator baseline, resolves the cluster credential once, forms the cluster and AZ-a service, performs the final proof, and scrubs the credential variable. |
+| `ansible/inventory/` | The tracked EC2 dynamic inventory and its group contract (`fileserver_nodes`, `fileserver_witness`, and overlapping singleton `fileserver_cluster_former`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring, plus AWS IAM reference documents. |
 | `docs/explanation/` | Technical debt with exit criteria. |

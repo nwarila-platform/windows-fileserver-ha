@@ -2,17 +2,17 @@
 # File: 'ansible/playbooks/fileserver-aws.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Brings five EPHEMERAL EC2 instances from "the API says they exist" to prepared Windows hosts.
-# All five are made reachable and bootstrapped; the four cluster nodes then receive the private
-# network, domain membership, and one prepared shared volume per Availability Zone. The witness
-# remains outside that domain-side preparation but receives the file-server baseline.
+# Brings five ephemeral EC2 instances through host preparation, forms the declared four-node
+# cluster under its service account, adopts both shared disks, and publishes the implemented AZ-a
+# clustered data share. The workgroup witness remains outside domain preparation and quorum.
 #
 # Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
 # ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
 #
-# The play and role order is the design. Every host must answer before its shell can be repaired.
-# The cluster nodes must then reach the private network before joining the realm, and their shared
-# volumes must be lettered before file-server work begins.
+# The order is load-bearing: Administrator-owned readiness and node prerequisites precede a
+# resolve-once credential boundary, singleton cluster formation, fresh readback, and credential
+# scrub. The final proof reports witness quorum, the AZ-b file-server role, and Storage Replica as
+# deferred.
 #
 # gather_facts and become are absent throughout because the framework's ansible.cfg makes
 # gathering explicit and escalation off. Implicit gathering would run a module over the shell
@@ -34,6 +34,11 @@
         that:
           - groups['fileserver_nodes'] | default([]) | length == 4
           - groups['fileserver_witness'] | default([]) | length == 1
+          - groups['fileserver_cluster_former'] | default([]) | length == 1
+          - groups['fileserver_cluster_former'] | default([]) == ['tcnaw-hafs01a']
+          - >-
+            groups['fileserver_cluster_former'] | default([])
+            | difference(groups['fileserver_nodes'] | default([])) | length == 0
           - >-
             (groups['all'] | default([]) | sort)
             ==
@@ -42,10 +47,12 @@
               + (groups['fileserver_witness'] | default([]))
             ) | sort
         fail_msg: >-
-          Refusing to configure: expected the inventory to contain only 4 hosts in
-          'fileserver_nodes' and 1 in 'fileserver_witness'; found
+          Refusing to configure: expected 4 hosts in 'fileserver_nodes', 1 in
+          'fileserver_witness', and only tcnaw-hafs01a in the overlapping
+          'fileserver_cluster_former'; found
           {{ groups['fileserver_nodes'] | default([]) | length }} and
-          {{ groups['fileserver_witness'] | default([]) | length }}, with all hosts
+          {{ groups['fileserver_witness'] | default([]) | length }}, former hosts
+          {{ groups['fileserver_cluster_former'] | default([]) }}, and all hosts
           {{ groups['all'] | default([]) | sort }}. The dynamic EC2 inventory must carry exactly
           the ratified 4 cluster nodes and 1 file-share witness before anything runs.
         quiet: true
@@ -164,10 +171,731 @@
   #region ------ [ Roles ] -------------------------------------------------------------------- #
   roles:
 
-    # Converges the SMB baseline via the role's first-class PowerShell scripts, then fails closed
-    # on the unimplemented cluster surface by design.
+    # Converges the Administrator-owned SMB baseline and node-local cluster prerequisites.
     - role: 'fileserver'
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
 
 #endregion --- [ Play: File Server HA Baseline ] ---------------------------------------------- #
+
+#region ------ [ Play: Resolve The Cluster Formation Credential ] ----------------------------- #
+
+- name: 'PLAY | Resolve The Cluster Formation Credential'
+  hosts: 'localhost'
+  gather_facts: false
+  become: false
+  any_errors_fatal: true
+  vars:
+    __fileserver_cluster_secret_url__: >-
+      s3://{{ aws_account_id }}-ansible/windows-fileserver-ha/svc-fscluster-mgr_password.secret
+  tasks:
+    - name: 'INVENTORY | Resolve The Cluster Service Account Password'
+      block:
+        - name: 'INVENTORY | Read The Cluster Service Account Password'
+          no_log: true
+          ansible.builtin.set_fact:
+            __fileserver_cluster_password__: >-
+              {{ lookup('secret', __fileserver_cluster_secret_url__) }}
+            cacheable: false
+      rescue:
+        - name: 'INVENTORY | Report That The Cluster Password Could Not Be Read'
+          ansible.builtin.fail:
+            msg: >-
+              Could not read {{ __fileserver_cluster_secret_url__ }}. Confirm the object exists,
+              the controller identity can read that exact object, and boto3 is installed for the
+              controller interpreter.
+
+#endregion --- [ Play: Resolve The Cluster Formation Credential ] ----------------------------- #
+
+#region ------ [ Play: Form And Configure The File Server Cluster ] --------------------------- #
+
+- name: 'PLAY | Form And Configure The File Server Cluster'
+  hosts: 'fileserver_cluster_former'
+  gather_facts: false
+  become: false
+  vars:
+    ansible_user: 'TCN\svc-fscluster-mgr'
+    ansible_password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"
+  tasks:
+
+    - name: 'BEGIN (aws) | Acquire IMDSv2 Tokens For The Disk Preparers'
+      delegate_to: "{{ disk.owners[0] }}"
+      loop: "{{ fileserver_running.cluster.shared_disks }}"
+      loop_control:
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      register: '__fileserver_imds_tokens__'
+      ansible.windows.win_uri:
+        url: 'http://169.254.169.254/latest/api/token'
+        method: 'PUT'
+        headers:
+          X-aws-ec2-metadata-token-ttl-seconds: '300'
+        return_content: true
+
+    - name: 'BEGIN (aws) | Resolve The Disk Preparers From IMDSv2'
+      delegate_to: "{{ disk.owners[0] }}"
+      loop: "{{ fileserver_running.cluster.shared_disks }}"
+      loop_control:
+        index_var: '__fileserver_disk_index__'
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      register: '__fileserver_imds_instances__'
+      vars:
+        corresponding_token: >-
+          {{ __fileserver_imds_tokens__.results[__fileserver_disk_index__] }}
+      ansible.windows.win_uri:
+        url: 'http://169.254.169.254/latest/meta-data/instance-id'
+        method: 'GET'
+        headers:
+          X-aws-ec2-metadata-token: "{{ corresponding_token.content }}"
+        return_content: true
+
+    - name: 'BEGIN (aws) | Describe The Declared Shared Volumes'
+      delegate_to: 'localhost'
+      become: false
+      no_log: true
+      loop: "{{ fileserver_running.cluster.shared_disks }}"
+      loop_control:
+        index_var: '__fileserver_disk_index__'
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      retries: 5
+      delay: 10
+      until: __fileserver_aws_volumes__.volumes | default([]) | length == 1
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+        corresponding_instance_id: >-
+          {{ __fileserver_imds_instances__.results[__fileserver_disk_index__] }}
+      amazon.aws.ec2_vol_info:
+        region: "{{ aws_region }}"
+        access_key: "{{ AWS_ACCESS_KEY_ID | default(omit, true) }}"
+        secret_key: "{{ AWS_SECRET_ACCESS_KEY | default(omit, true) }}"
+        session_token: "{{ AWS_SESSION_TOKEN | default(omit, true) }}"
+        filters:
+          attachment.instance-id: "{{ corresponding_instance_id.content | trim }}"
+          attachment.status: 'attached'
+          'tag:Function': "{{ disk.function }}"
+      register: '__fileserver_aws_volumes__'
+
+    - name: 'BEGIN (aws) | Assert One Volume Per Declared Function'
+      loop: "{{ fileserver_running.cluster.shared_disks }}"
+      loop_control:
+        index_var: '__fileserver_disk_index__'
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      vars:
+        corresponding_instance_id: >-
+          {{ __fileserver_imds_instances__.results[__fileserver_disk_index__] }}
+        corresponding_volume: >-
+          {{ __fileserver_aws_volumes__.results[__fileserver_disk_index__] }}
+      ansible.builtin.assert:
+        that:
+          - corresponding_volume.volumes | default([]) | length == 1
+          - corresponding_volume.volumes[0].tags.Function | default('') == disk.function
+          - >-
+            corresponding_instance_id.content | trim
+            in (corresponding_volume.volumes[0].attachments
+                | map(attribute='instance_id') | list)
+        fail_msg: >-
+          Could not resolve exactly one attached EBS volume for Function '{{ disk.function }}'
+          on its declared preparer instance. Verify the Function tag and attached-state metadata.
+        quiet: true
+
+    - name: 'BEGIN (aws) | Initialize The Resolved Shared Disk Identities'
+      ansible.builtin.set_fact:
+        __fileserver_resolved_shared_disks__: []
+
+    - name: 'BEGIN (aws) | Publish The Resolved Shared Disk Identities'
+      loop: "{{ fileserver_running.cluster.shared_disks }}"
+      loop_control:
+        index_var: '__fileserver_disk_index__'
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      vars:
+        corresponding_volume: >-
+          {{ __fileserver_aws_volumes__.results[__fileserver_disk_index__].volumes[0] }}
+      ansible.builtin.set_fact:
+        __fileserver_resolved_shared_disks__: >-
+          {{ __fileserver_resolved_shared_disks__ + [
+               {
+                 'function': disk.function,
+                 'volume_id': corresponding_volume.volume_id,
+                 'expected_serial': corresponding_volume.volume_id | replace('-', ''),
+                 'owners': disk.owners,
+                 'fileserver_home': disk.fileserver_home,
+                 'preparer': disk.owners[0]
+               }
+             ] }}
+
+    - name: 'BEGIN (aws) | Assert The Resolved Shared Disk Identity Contract'
+      ansible.builtin.assert:
+        that:
+          - __fileserver_resolved_shared_disks__ | length == 2
+          - __fileserver_resolved_shared_disks__ | map(attribute='function') | unique | length == 2
+          - __fileserver_resolved_shared_disks__ | map(attribute='volume_id') | unique | length == 2
+          - __fileserver_resolved_shared_disks__ | map(attribute='expected_serial') | unique | length == 2
+          - __fileserver_resolved_shared_disks__ | map(attribute='preparer') | unique | length == 2
+          - >-
+            __fileserver_resolved_shared_disks__
+            | selectattr('fileserver_home', 'equalto', true) | list | length == 1
+        fail_msg: >-
+          Runtime shared-disk resolution must publish two unique Function, volume ID, serial,
+          and preparer identities with exactly one fileserver_home declaration.
+        quiet: true
+
+    - name: 'MAIN | Form The File Server Cluster'
+      async: 1200
+      poll: 15
+      register: '__fileserver_cluster__'
+      ansible.windows.win_powershell:
+        depth: 4
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          Node: "{{ fileserver_running.cluster.nodes }}"
+          StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-FileServerCluster.ps1') }}
+
+    - name: 'MAIN | Converge The Cluster Name Parameters'
+      register: '__fileserver_cluster_name_parameters__'
+      ansible.windows.win_powershell:
+        depth: 3
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          ResourceName: "{{ fileserver_running.cluster.name_resource }}"
+          RegisterAllProvidersIP: >-
+            {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
+          HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusterNameParameters.ps1') }}
+
+    - name: 'MAIN | Adopt The Declared Shared Disks And Constrain Their Owners'
+      delegate_to: "{{ disk.preparer }}"
+      loop: "{{ __fileserver_resolved_shared_disks__ }}"
+      loop_control:
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      register: '__fileserver_cluster_disks__'
+      ansible.windows.win_powershell:
+        depth: 5
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          Disk:
+            Function: "{{ disk.function }}"
+            VolumeId: "{{ disk.volume_id }}"
+            Owners: "{{ disk.owners }}"
+            FileServerHome: "{{ disk.fileserver_home }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusterSharedDisks.ps1') }}
+
+    - name: 'MAIN | Converge The Clustered File Server Role'
+      async: 1200
+      poll: 15
+      register: '__fileserver_clustered_role__'
+      vars:
+        home_disk: >-
+          {{ __fileserver_resolved_shared_disks__
+             | selectattr('fileserver_home', 'equalto', true) | list | first }}
+      ansible.windows.win_powershell:
+        depth: 5
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+          HomeVolumeId: "{{ home_disk.volume_id }}"
+          Owners: "{{ home_disk.owners }}"
+          StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
+          IgnoredNetworkAddress: >-
+            {{ fileserver_running.cluster.file_server.ignored_network_addresses }}
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusteredFileServer.ps1') }}
+
+    - name: 'MAIN | Read The Clustered File Server Owner'
+      check_mode: false
+      register: '__fileserver_role_owner__'
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+        script: |
+          Param (
+            [string] $ClusterName,
+            [string] $RoleName
+          )
+          $Ansible.Changed = $false
+          $Groups = @(Get-ClusterGroup -Cluster $ClusterName | Where-Object Name -EQ $RoleName)
+          if ($Groups.Count -ne 1 -or [string]$Groups[0].State -ne 'Online') {
+            throw "Clustered file-server role $RoleName must exist exactly once and be Online."
+          }
+          [PSCustomObject]@{ owner_node = [string]$Groups[0].OwnerNode }
+
+    - name: 'MAIN | Require A Declared File Server Owner'
+      vars:
+        home_disk: >-
+          {{ __fileserver_resolved_shared_disks__
+             | selectattr('fileserver_home', 'equalto', true) | list | first }}
+        role_owner: "{{ __fileserver_role_owner__.output[0].owner_node | lower }}"
+      ansible.builtin.assert:
+        that:
+          - role_owner in home_disk.owners
+          - role_owner in groups['fileserver_nodes']
+        fail_msg: >-
+          The fresh TCNAW-HAFS01 OwnerNode readback is not one of the home disk's declared
+          possible owners and inventory cluster nodes; refusing node-local share work.
+        quiet: true
+
+    - name: 'MAIN | Create The Clustered Data Directory'
+      delegate_to: "{{ __fileserver_role_owner__.output[0].owner_node | lower }}"
+      ansible.windows.win_file:
+        access_time: 'preserve'
+        access_time_format: 'yyyy-MM-dd HH:mm:ss'
+        modification_time: 'preserve'
+        modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+        path: "{{ fileserver_running.cluster.share.path }}"
+        state: 'directory'
+
+    - name: 'MAIN | Enforce The Clustered Data Directory Permissions'
+      delegate_to: "{{ __fileserver_role_owner__.output[0].owner_node | lower }}"
+      register: '__fileserver_share_directory_acl__'
+      ansible.windows.win_powershell:
+        depth: 6
+        error_action: 'stop'
+        parameters:
+          Mode: 'DirectoryAcl'
+          ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+          Name: "{{ fileserver_running.cluster.share.name }}"
+          Path: "{{ fileserver_running.cluster.share.path }}"
+          Description: "{{ fileserver_running.cluster.share.description }}"
+          ContinuouslyAvailable: >-
+            {{ fileserver_running.cluster.share.continuously_available }}
+          FolderEnumerationMode: >-
+            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
+          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
+          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
+          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
+          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusteredSmbShare.ps1') }}
+
+    - name: 'MAIN | Publish The Clustered Data Share'
+      delegate_to: "{{ __fileserver_role_owner__.output[0].owner_node | lower }}"
+      register: '__fileserver_clustered_share__'
+      ansible.windows.win_powershell:
+        depth: 6
+        error_action: 'stop'
+        parameters:
+          Mode: 'Share'
+          ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+          Name: "{{ fileserver_running.cluster.share.name }}"
+          Path: "{{ fileserver_running.cluster.share.path }}"
+          Description: "{{ fileserver_running.cluster.share.description }}"
+          ContinuouslyAvailable: >-
+            {{ fileserver_running.cluster.share.continuously_available }}
+          FolderEnumerationMode: >-
+            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
+          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
+          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
+          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
+          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusteredSmbShare.ps1') }}
+
+    - name: 'END | Prove The File Server Cluster Converged'
+      block:
+        - name: 'END | Re-Read The Cluster Core, Role And Quorum'
+          check_mode: false
+          register: '__fileserver_final_cluster__'
+          ansible.windows.win_powershell:
+            depth: 8
+            error_action: 'stop'
+            parameters:
+              ClusterName: "{{ fileserver_running.cluster.name }}"
+              ClusterNameResourceName: "{{ fileserver_running.cluster.name_resource }}"
+              RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+              StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
+            script: |
+              Param (
+                [string] $ClusterName,
+                [string] $ClusterNameResourceName,
+                [string] $RoleName,
+                [string[]] $StaticAddress
+              )
+              $Ansible.Changed = $false
+              function Read-Parameter([object]$Resource, [string]$Name) {
+                $Values = @(Get-ClusterParameter -InputObject $Resource -Name $Name)
+                if ($Values.Count -ne 1) { throw "Resource $($Resource.Name) lacks one $Name." }
+                $Values[0].Value
+              }
+              $Nodes = @(Get-ClusterNode -Cluster $ClusterName | ForEach-Object {
+                  [PSCustomObject]@{ name = ([string]$_.Name).ToLowerInvariant(); state = [string]$_.State }
+                })
+              $AllResources = @(Get-ClusterResource -Cluster $ClusterName)
+              $NameResources = @($AllResources | Where-Object Name -EQ $ClusterNameResourceName)
+              if ($NameResources.Count -ne 1) { throw 'Cluster Name resource readback is ambiguous.' }
+              $Groups = @(Get-ClusterGroup -Cluster $ClusterName)
+              $RoleGroups = @($Groups | Where-Object Name -EQ $RoleName)
+              if ($RoleGroups.Count -ne 1) { throw "Role $RoleName readback is ambiguous." }
+              $Role = $RoleGroups[0]
+              $RoleResources = @($AllResources | Where-Object { [string]$_.OwnerGroup -eq $RoleName })
+              $RoleNameResources = @($RoleResources | Where-Object ResourceType -EQ 'Network Name')
+              if ($RoleNameResources.Count -ne 1) { throw 'Role Network Name readback is ambiguous.' }
+              $ClusterNetworks = @(Get-ClusterNetwork -Cluster $ClusterName)
+              $RoleIps = @($RoleResources | Where-Object ResourceType -EQ 'IP Address' | ForEach-Object {
+                  $NetworkName = [string](Read-Parameter $_ 'Network')
+                  $NetworkMatches = @($ClusterNetworks | Where-Object Name -EQ $NetworkName)
+                  if ($NetworkMatches.Count -ne 1) { throw "IP resource $($_.Name) network is ambiguous." }
+                  [PSCustomObject]@{
+                    name = [string]$_.Name
+                    state = [string]$_.State
+                    address = [string](Read-Parameter $_ 'Address')
+                    network = $NetworkName
+                    network_address = [string]$NetworkMatches[0].Address
+                    network_address_mask = [string]$NetworkMatches[0].AddressMask
+                    subnet_mask = [string](Read-Parameter $_ 'SubnetMask')
+                    enable_dhcp = [int](Read-Parameter $_ 'EnableDhcp')
+                  }
+                })
+              $DependencyResult = @(Get-ClusterResourceDependency -Resource $RoleNameResources[0])
+              $Dependency = if ($DependencyResult[0].PSObject.Properties.Name -contains 'DependencyExpression') {
+                [string]$DependencyResult[0].DependencyExpression
+              } else { [string]$DependencyResult[0] }
+              $ExpectedDependency = (($RoleIps | Where-Object address -In $StaticAddress |
+                    Sort-Object address | ForEach-Object { "[$($_.name)]" }) -join ' or ')
+              [PSCustomObject]@{
+                nodes = $Nodes
+                register_all_providers_ip = [int](Read-Parameter $NameResources[0] 'RegisterAllProvidersIP')
+                host_record_ttl = [int](Read-Parameter $NameResources[0] 'HostRecordTTL')
+                quorum_type = [string](Get-ClusterQuorum -Cluster $ClusterName).QuorumType
+                role_count = $RoleGroups.Count
+                role = [PSCustomObject]@{
+                  name = [string]$Role.Name
+                  state = [string]$Role.State
+                  owner_node = ([string]$Role.OwnerNode).ToLowerInvariant()
+                  preferred_owners = @(Get-ClusterOwnerNode -Group $Role | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
+                  resources = @($RoleResources | ForEach-Object {
+                      [PSCustomObject]@{ name = [string]$_.Name; type = [string]$_.ResourceType; state = [string]$_.State; owner_group = [string]$_.OwnerGroup }
+                    })
+                  ip_resources = $RoleIps
+                  dependency = $Dependency
+                  expected_dependency = $ExpectedDependency
+                }
+                memberships = @($Groups | ForEach-Object {
+                    $GroupName = [string]$_.Name
+                    [PSCustomObject]@{
+                      group = $GroupName
+                      resources = @($AllResources | Where-Object { [string]$_.OwnerGroup -eq $GroupName } | ForEach-Object { [string]$_.Name })
+                    }
+                  })
+              }
+
+        - name: 'END | Re-Read The Declared Shared Disk Identities And Owners'
+          check_mode: false
+          delegate_to: "{{ disk.preparer }}"
+          loop: "{{ __fileserver_resolved_shared_disks__ }}"
+          loop_control:
+            label: "{{ disk.function }}"
+            loop_var: 'disk'
+          register: '__fileserver_final_disks__'
+          ansible.windows.win_powershell:
+            depth: 6
+            error_action: 'stop'
+            parameters:
+              ClusterName: "{{ fileserver_running.cluster.name }}"
+              Disk:
+                Function: "{{ disk.function }}"
+                VolumeId: "{{ disk.volume_id }}"
+                Owners: "{{ disk.owners }}"
+                FileServerHome: "{{ disk.fileserver_home }}"
+            script: |
+              Param (
+                [string] $ClusterName,
+                [System.Collections.IDictionary] $Disk
+              )
+              $Ansible.Changed = $false
+              $Token = ([string]$Disk.VolumeId).ToLowerInvariant().Replace('-', '')
+              $LocalDisks = @(Get-Disk)
+              $LocalMatches = @($LocalDisks | Where-Object {
+                  (([string]$_.UniqueId).ToLowerInvariant() -replace '[^0-9a-z]', '').Contains($Token)
+                })
+              if ($LocalMatches.Count -ne 1) { throw "Volume $($Disk.VolumeId) local identity is ambiguous." }
+              $Matches = @()
+              foreach ($Resource in @(Get-ClusterResource -Cluster $ClusterName | Where-Object ResourceType -EQ 'Physical Disk')) {
+                $Parameters = @(Get-ClusterParameter -InputObject $Resource -Name 'DiskIdGuid')
+                if ($Parameters.Count -ne 1) { throw "Resource $($Resource.Name) lacks one DiskIdGuid." }
+                $Guid = ([string]$Parameters[0].Value).Trim('{}')
+                $Mapped = @($LocalDisks | Where-Object { ([string]$_.Guid).Trim('{}') -ieq $Guid })
+                if ($Mapped.Count -eq 1 -and (([string]$Mapped[0].UniqueId).ToLowerInvariant() -replace '[^0-9a-z]', '').Contains($Token)) {
+                  $Matches += [PSCustomObject]@{ resource = $Resource; guid = $Guid; disk = $Mapped[0] }
+                }
+              }
+              if ($Matches.Count -ne 1) { throw "Volume $($Disk.VolumeId) cluster identity is ambiguous." }
+              $Match = $Matches[0]
+              [PSCustomObject]@{
+                function = [string]$Disk.Function
+                volume_id = [string]$Disk.VolumeId
+                expected_serial = $Token
+                fileserver_home = [bool]$Disk.FileServerHome
+                resource_name = [string]$Match.resource.Name
+                disk_id_guid = [string]$Match.guid
+                observed_unique_id = [string]$Match.disk.UniqueId
+                state = [string]$Match.resource.State
+                owner_group = [string]$Match.resource.OwnerGroup
+                possible_owners = @(Get-ClusterOwnerNode -InputObject $Match.resource | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
+              }
+
+        - name: 'END | Re-Read The Clustered Share And Permissions'
+          check_mode: false
+          delegate_to: "{{ __fileserver_final_cluster__.output[0].role.owner_node | lower }}"
+          register: '__fileserver_final_share__'
+          ansible.windows.win_powershell:
+            depth: 8
+            error_action: 'stop'
+            parameters:
+              ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+              Name: "{{ fileserver_running.cluster.share.name }}"
+              Path: "{{ fileserver_running.cluster.share.path }}"
+              Description: "{{ fileserver_running.cluster.share.description }}"
+              ContinuouslyAvailable: >-
+                {{ fileserver_running.cluster.share.continuously_available }}
+              FolderEnumerationMode: >-
+                {{ fileserver_running.cluster.share.folder_enumeration_mode }}
+              CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
+              EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
+              NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
+              ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+            script: |
+              Param (
+                [string] $ScopeName,
+                [string] $Name,
+                [string] $Path,
+                [string] $Description,
+                [bool] $ContinuouslyAvailable,
+                [string] $FolderEnumerationMode,
+                [string] $CachingMode,
+                [bool] $EncryptData,
+                [System.Collections.IDictionary[]] $NtfsAccess,
+                [System.Collections.IDictionary[]] $ShareAccess
+              )
+              $Ansible.Changed = $false
+              function Resolve-Sid([string]$Principal) {
+                ([System.Security.Principal.NTAccount]$Principal).Translate(
+                  [System.Security.Principal.SecurityIdentifier]).Value
+              }
+              $DesiredNtfs = @($NtfsAccess | ForEach-Object {
+                  '{0}|{1}|{2}|{3}|{4}' -f (Resolve-Sid $_.principal), $_.access_control_type,
+                    $_.rights, $_.inheritance_flags, $_.propagation_flags
+                } | Sort-Object)
+              $Acl = Get-Acl -LiteralPath $Path
+              $Inherited = @($Acl.Access | Where-Object IsInherited).Count
+              $CurrentNtfs = @($Acl.Access | Where-Object { -not $_.IsInherited } | ForEach-Object {
+                  $Rule = $_
+                  $Sid = $Rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                  $Desired = @($NtfsAccess | Where-Object {
+                      (Resolve-Sid $_.principal) -eq $Sid -and
+                      [int][System.Security.AccessControl.FileSystemRights]$_.rights -eq [int]$Rule.FileSystemRights
+                    })
+                  $Rights = if ($Desired.Count -eq 1) { [string]$Desired[0].rights } else { [string]$Rule.FileSystemRights }
+                  '{0}|{1}|{2}|{3}|{4}' -f $Sid, $Rule.AccessControlType, $Rights, $Rule.InheritanceFlags, $Rule.PropagationFlags
+                } | Sort-Object)
+              $DesiredShare = @($ShareAccess | ForEach-Object {
+                  '{0}|{1}|{2}' -f (Resolve-Sid $_.principal), $_.access_control_type, $_.access_right
+                } | Sort-Object)
+              $Shares = @(Get-SmbShare -Name $Name -ScopeName $ScopeName -ErrorAction SilentlyContinue)
+              if ($Shares.Count -ne 1) { throw "Share $Name in scope $ScopeName is ambiguous." }
+              $Share = $Shares[0]
+              $CurrentShare = @(Get-SmbShareAccess -Name $Name -ScopeName $ScopeName | ForEach-Object {
+                  '{0}|{1}|{2}' -f (Resolve-Sid $_.AccountName), $_.AccessControlType, $_.AccessRight
+                } | Sort-Object)
+              [PSCustomObject]@{
+                name = [string]$Share.Name
+                scope_name = [string]$Share.ScopeName
+                path = [string]$Share.Path
+                description = [string]$Share.Description
+                continuously_available = [bool]$Share.ContinuouslyAvailable
+                folder_enumeration_mode = [string]$Share.FolderEnumerationMode
+                caching_mode = [string]$Share.CachingMode
+                encrypt_data = [bool]$Share.EncryptData
+                dacl_protected = [bool]$Acl.AreAccessRulesProtected
+                inherited_count = $Inherited
+                desired_ntfs = $DesiredNtfs
+                current_ntfs = $CurrentNtfs
+                desired_share_access = $DesiredShare
+                current_share_access = $CurrentShare
+              }
+
+        - name: 'END | Prove The Clustered Share Answers By Name'
+          check_mode: false
+          register: '__fileserver_final_smb__'
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            parameters:
+              Path: >-
+                \\{{ fileserver_running.cluster.file_server.name }}\{{ fileserver_running.cluster.share.name }}
+            script: |
+              Param ([string] $Path)
+              $Ansible.Changed = $false
+              $Accessible = Test-Path -LiteralPath $Path -PathType Container
+              if (-not $Accessible) { throw "Clustered SMB path $Path is not accessible." }
+              [PSCustomObject]@{ accessible = [bool]$Accessible }
+
+        - name: 'END | Assert The Exact Implemented File Server State'
+          vars:
+            __fileserver_final_cluster_state__: "{{ __fileserver_final_cluster__.output[0] }}"
+            __fileserver_final_disk_a__: "{{ __fileserver_final_disks__.results[0].output[0] }}"
+            __fileserver_final_disk_b__: "{{ __fileserver_final_disks__.results[1].output[0] }}"
+            __fileserver_declared_disk_a__: "{{ __fileserver_resolved_shared_disks__[0] }}"
+            __fileserver_declared_disk_b__: "{{ __fileserver_resolved_shared_disks__[1] }}"
+            __fileserver_home_disk__: >-
+              {{ __fileserver_resolved_shared_disks__
+                 | selectattr('fileserver_home', 'equalto', true) | list | first }}
+            __fileserver_away_disk__: >-
+              {{ __fileserver_resolved_shared_disks__
+                 | selectattr('fileserver_home', 'equalto', false) | list | first }}
+            __fileserver_final_home_disk__: >-
+              {{ __fileserver_final_disk_a__
+                 if __fileserver_final_disk_a__.fileserver_home
+                 else __fileserver_final_disk_b__ }}
+            __fileserver_final_away_disk__: >-
+              {{ __fileserver_final_disk_b__
+                 if __fileserver_final_disk_a__.fileserver_home
+                 else __fileserver_final_disk_a__ }}
+            __fileserver_final_share_state__: "{{ __fileserver_final_share__.output[0] }}"
+            __fileserver_final_role_ips__: "{{ __fileserver_final_cluster_state__.role.ip_resources }}"
+          ansible.builtin.assert:
+            that:
+              - __fileserver_final_cluster_state__.nodes | length == 4
+              - >-
+                __fileserver_final_cluster_state__.nodes | map(attribute='name') | list | sort
+                == fileserver_running.cluster.nodes | sort
+              - >-
+                __fileserver_final_cluster_state__.nodes
+                | rejectattr('state', 'equalto', 'Up') | list | length == 0
+              - __fileserver_final_cluster_state__.register_all_providers_ip == 0
+              - __fileserver_final_cluster_state__.host_record_ttl == 300
+              - __fileserver_final_cluster_state__.quorum_type == 'NodeMajority'
+              - __fileserver_final_disks__.results | length == 2
+              - >-
+                __fileserver_declared_disk_a__.expected_serial
+                in (__fileserver_final_disk_a__.observed_unique_id | lower
+                    | regex_replace('[^0-9a-z]', ''))
+              - >-
+                __fileserver_declared_disk_b__.expected_serial
+                in (__fileserver_final_disk_b__.observed_unique_id | lower
+                    | regex_replace('[^0-9a-z]', ''))
+              - __fileserver_final_disk_a__.disk_id_guid | length > 0
+              - __fileserver_final_disk_b__.disk_id_guid | length > 0
+              - __fileserver_final_disk_a__.state == 'Online'
+              - __fileserver_final_disk_b__.state == 'Online'
+              - __fileserver_final_disk_a__.possible_owners | sort == __fileserver_declared_disk_a__.owners | sort
+              - __fileserver_final_disk_b__.possible_owners | sort == __fileserver_declared_disk_b__.owners | sort
+              - >-
+                __fileserver_resolved_shared_disks__
+                | selectattr('fileserver_home', 'equalto', true) | list | length == 1
+              - >-
+                __fileserver_final_cluster_state__.role.resources
+                | selectattr('type', 'equalto', 'Physical Disk')
+                | map(attribute='name') | list == [__fileserver_final_home_disk__.resource_name]
+              - __fileserver_final_home_disk__.state == 'Online'
+              - __fileserver_final_away_disk__.owner_group == 'Available Storage'
+              - >-
+                __fileserver_final_away_disk__.resource_name not in
+                (__fileserver_final_cluster_state__.role.resources | map(attribute='name') | list)
+              - __fileserver_final_cluster_state__.role_count == 1
+              - __fileserver_final_cluster_state__.role.name == 'TCNAW-HAFS01'
+              - __fileserver_final_cluster_state__.role.state == 'Online'
+              - __fileserver_final_cluster_state__.role.owner_node in __fileserver_home_disk__.owners
+              - __fileserver_final_cluster_state__.role.preferred_owners == __fileserver_home_disk__.owners
+              - __fileserver_final_role_ips__ | length == 2
+              - >-
+                __fileserver_final_role_ips__ | map(attribute='address') | list | sort
+                == fileserver_running.cluster.file_server.static_addresses | sort
+              - >-
+                __fileserver_final_role_ips__
+                | rejectattr('enable_dhcp', 'equalto', 0) | list | length == 0
+              - >-
+                __fileserver_final_role_ips__
+                | selectattr('state', 'equalto', 'Online') | list | length == 1
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                 | map(attribute='network_address') | list | first) == '10.0.1.0'
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                 | map(attribute='subnet_mask') | list | first) == '255.255.255.0'
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                 | map(attribute='network_address_mask') | list | first) == '255.255.255.0'
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                 | map(attribute='network_address') | list | first) == '10.0.33.0'
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                 | map(attribute='subnet_mask') | list | first) == '255.255.255.0'
+              - >-
+                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                 | map(attribute='network_address_mask') | list | first) == '255.255.255.0'
+              - >-
+                __fileserver_final_cluster_state__.role.dependency
+                == __fileserver_final_cluster_state__.role.expected_dependency
+              - __fileserver_final_share_state__.name == 'data'
+              - __fileserver_final_share_state__.scope_name == 'TCNAW-HAFS01'
+              - __fileserver_final_share_state__.path == 'D:\shares\data'
+              - __fileserver_final_share_state__.description == 'Highly available file data'
+              - __fileserver_final_share_state__.continuously_available
+              - >-
+                __fileserver_final_share_state__.encrypt_data
+                == fileserver_running.smb.settings.EncryptData
+              - __fileserver_final_share_state__.folder_enumeration_mode == 'AccessBased'
+              - __fileserver_final_share_state__.caching_mode == 'None'
+              - __fileserver_final_share_state__.dacl_protected
+              - __fileserver_final_share_state__.inherited_count == 0
+              - >-
+                __fileserver_final_share_state__.current_ntfs | sort
+                == __fileserver_final_share_state__.desired_ntfs | sort
+              - >-
+                __fileserver_final_share_state__.current_share_access | sort
+                == __fileserver_final_share_state__.desired_share_access | sort
+              - __fileserver_final_smb__.output[0].accessible
+            fail_msg: >-
+              The ungated file-server readback did not match the declared implemented state.
+              Cluster={{ __fileserver_final_cluster__.output | default([]) }};
+              disks={{ __fileserver_final_disks__.results | map(attribute='output') | list }};
+              share={{ __fileserver_final_share__.output | default([]) }};
+              SMB={{ __fileserver_final_smb__.output | default([]) }}.
+            quiet: true
+
+        - name: 'END | Report The Implemented And Deferred File Server State'
+          ansible.builtin.debug:
+            msg:
+              - >-
+                Implemented and freshly proved: four-node TCNAW-FSCL01, two adopted and
+                owner-scoped shared disks, online AZ-a role TCNAW-HAFS01, and encrypted
+                continuously available share \\TCNAW-HAFS01\data.
+              - 'Quorum remains NodeMajority.'
+              - >-
+                The AZ-b disk is adopted and owner-scoped but hosts no file-server role.
+              - 'NOT DONE: workgroup file-share witness/quorum'
+              - 'NOT DONE: AZ-b file-server role'
+              - 'NOT DONE: Storage Replica'
+
+#endregion --- [ Play: Form And Configure The File Server Cluster ] --------------------------- #
+
+#region ------ [ Play: Forget The Cluster Formation Credential ] ------------------------------ #
+
+- name: 'PLAY | Forget The Cluster Formation Credential'
+  hosts: 'localhost'
+  gather_facts: false
+  become: false
+  tasks:
+    - name: 'Cleanup | Forget The Cluster Service Account Password'
+      no_log: true
+      ansible.builtin.set_fact:
+        __fileserver_cluster_password__: null
+        cacheable: false
+
+#endregion --- [ Play: Forget The Cluster Formation Credential ] ------------------------------ #

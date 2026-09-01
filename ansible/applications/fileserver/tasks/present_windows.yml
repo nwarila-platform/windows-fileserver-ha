@@ -8,10 +8,8 @@
 # $Ansible, so this task file stays declarative and the play recap stays honest
 # (docs/reference/powershell-style-guide.md).
 #
-# The role currently fails closed at END: WSFC bootstrap, cluster validation and adoption of
-# the prepared shared disks, Storage Replica, and file roles are unimplemented, and a host must
-# not be reported converged into an undefined state. Remove the END guard only when the cluster
-# surface lands.
+# This Administrator phase converges the SMB baseline and node-local cluster prerequisites.
+# Cluster-scoped convergence follows in the fleet playbook under the cluster service account.
 #
 # =========================================================================================== #
 ---
@@ -142,6 +140,8 @@
         # formation region. This remains ungated so the module can report server restart state
         # even when every requested feature is already installed.
         - name: 'PROCESS | Install Failover Clustering And Its Management Tools'
+          async: 1200
+          poll: 15
           register: '__fileserver_failover_clustering__'
 
           ansible.windows.win_feature:
@@ -150,14 +150,28 @@
             name: 'Failover-Clustering'
             state: 'present'
 
+        # ------------------------------------------------------------------------------------- #
+
+        - name: 'PROCESS | Install File Services On The Cluster Nodes'
+          async: 1200
+          poll: 15
+          register: '__fileserver_file_services__'
+
+          ansible.windows.win_feature:
+            include_management_tools: true
+            include_sub_features: false
+            name: 'FS-FileServer'
+            state: 'present'
+
         # A restart is safe here only because no cluster exists yet. Once a host is a cluster
         # member, rolling replacement must drain it before restarting. The driver decision comes
-        # from durable boot state, while the feature decision comes from Server Manager's own
-        # reboot_required result; neither depends on this invocation's changed flags.
+        # from durable boot state, while the feature decisions come from Server Manager's own
+        # reboot_required results; none depends on this invocation's changed flags.
         - name: 'PROCESS | Reboot When The Cluster Prerequisites Require It'
           when: >-
             __fileserver_nvme_reboot_required__
             or (__fileserver_failover_clustering__.reboot_required | default(false) | bool)
+            or (__fileserver_file_services__.reboot_required | default(false) | bool)
 
           ansible.windows.win_reboot:
             boot_time_command: >-
@@ -220,6 +234,14 @@
 
         # ------------------------------------------------------------------------------------- #
 
+        - name: 'END | Re-Read The File Services Feature'
+          register: '__fileserver_final_file_services__'
+
+          ansible.windows.win_feature_info:
+            name: 'FS-FileServer'
+
+        # ------------------------------------------------------------------------------------- #
+
         - name: 'END | Re-Read The Failover Cluster Management Tools'
           register: '__fileserver_final_clustering_tools__'
 
@@ -258,6 +280,11 @@
                   | selectattr('name', 'equalto', 'RSAT-Clustering-PowerShell')
                   | map(attribute='install_state') | list | first)
                  | default('missing', true) }}
+            __fileserver_final_file_services_state__: >-
+              {{ (__fileserver_final_file_services__.features | default([])
+                  | selectattr('name', 'equalto', 'FS-FileServer')
+                  | map(attribute='install_state') | list | first)
+                 | default('missing', true) }}
 
           ansible.builtin.assert:
             fail_msg: >-
@@ -270,7 +297,8 @@
                                 | bool) else 'absent' }}'; Failover-Clustering is
               '{{ __fileserver_final_feature_state__ }}'; RSAT-Clustering is
               '{{ __fileserver_final_tools_state__ }}'; RSAT-Clustering-PowerShell is
-              '{{ __fileserver_final_module_feature_state__ }}'; and Get-Module found
+              '{{ __fileserver_final_module_feature_state__ }}'; FS-FileServer is
+              '{{ __fileserver_final_file_services_state__ }}'; and Get-Module found
               '{{ __fileserver_final_failoverclusters_module__.stdout | default('') | trim }}'.
             quiet: true
             that:
@@ -281,22 +309,28 @@
               - __fileserver_final_feature_state__ == 'Installed'
               - __fileserver_final_tools_state__ == 'Installed'
               - __fileserver_final_module_feature_state__ == 'Installed'
+              - __fileserver_final_file_services_state__ == 'Installed'
               - __fileserver_final_failoverclusters_module__.stdout | trim == 'FailoverClusters'
 
       # End The 'End' Block
 
     #endregion --- [ End: Prepare The Cluster Nodes For Validation ] -------------------------- #
 
+# Forming a cluster is done BY the service account, not by the connection's local administrator:
+# the directory rights that let it take over the prestaged cluster name object belong to that
+# account alone. Local administrator on every node is the other half of what it needs, and it is
+# granted here rather than in the directory role because it is a property of these hosts.
+- name: 'MAIN | Ensure The Cluster Service Account Administers The Cluster Nodes'
+  when: inventory_hostname in (groups['fileserver_nodes'] | default([]))
+
+  ansible.windows.win_group_membership:
+    members:
+      - "{{ fileserver_running.cluster.service_account }}"
+    name: 'Administrators'
+    state: 'present'
+
 #endregion --- [ Main ] ---------------------------------------------------------------------- #
 
 #region ------ [ End ] ----------------------------------------------------------------------- #
-
-- name: 'END | Refuse To Report A Converged File Server (EP3/EP4 pending)'
-  ansible.builtin.fail:
-    msg: >-
-      The fileserver role converges only its SMB baseline and, on cluster nodes, the validation
-      prerequisites. WSFC bootstrap, cluster validation and adoption of the prepared shared disks,
-      Storage Replica, and clustered file roles are not implemented, so this role fails closed
-      rather than reporting a host converged into an undefined state.
 
 #endregion --- [ End ] ----------------------------------------------------------------------- #

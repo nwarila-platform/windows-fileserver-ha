@@ -4,11 +4,10 @@
 # Role metadata for fileserver. Description-only (style guide §8): NOT an enforcing argument
 # spec. The role's tasks/validate.yml enforces its merged-config guards.
 #
-# REQUIRED INPUTS — none yet. The EP2 scope (SMB server baseline) is fully covered by
-# defaults. EP3 (domain join, WSFC bootstrap) and EP4 (shared disks, Storage Replica, file
-# roles) will add playbook-supplied inputs here as they land: domain FQDN, DNS addresses, a
-# join credential path, witness share path, and per-disk identities. Those are
-# deployment-specific and will never be defaulted.
+# Defaults describe the ratified SMB, four-node cluster, disk-owner, AZ-a file-server role,
+# and encrypted share policy. Runtime volume identities and the cluster password are resolved
+# only by the playbook. Witness quorum, Storage Replica, and a second file-server role are
+# explicitly outside the implemented surface; tasks/validate.yml owns enforcement.
 # =========================================================================================== #
 ---
 galaxy_info:
@@ -16,10 +15,10 @@ galaxy_info:
   namespace: 'nwarila_platform'
   author: 'nwarila-platform'
   description: >-
-    Windows Server 2025 highly available file service (WSFC stretch cluster). Currently
-    converges the SMB server hardening baseline and fails closed on the unimplemented cluster
-    surface; WSFC bootstrap, shared storage, Storage Replica, and clustered file roles land in
-    later epics.
+    Windows Server 2025 file service: SMB and node prerequisites, a four-node WSFC cluster,
+    two adopted owner-scoped shared disks, one AZ-a clustered file-server role, and its exact
+    encrypted continuously available data share. Workgroup witness quorum, Storage Replica,
+    and an AZ-b file-server role are excluded.
   license: 'MIT'
   min_ansible_version: '2.17'
   platforms:

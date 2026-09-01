@@ -75,6 +75,11 @@
 # --- [ allowed: the ansible tree ] ---------------------------------------------------------- #
 !/ansible/applications/fileserver/README.md
 !/ansible/applications/fileserver/defaults/main.yml
+!/ansible/applications/fileserver/files/Set-FileServerCluster.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusterNameParameters.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusterSharedDisks.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusteredFileServer.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusteredSmbShare.ps1.stub
 !/ansible/applications/fileserver/files/Set-SmbServerHardening.ps1.stub
 !/ansible/applications/fileserver/meta/main.yml
 !/ansible/applications/fileserver/tasks/clean_windows.yml
@@ -120,6 +125,16 @@
 # lines together) beside Python/bash tooling.
 !/scripts/Set-ClusterDirectoryRights.pester.ps1
 !/scripts/Set-ClusterDirectoryRights.ps1
+!/scripts/Set-FileServerCluster.ps1
+!/scripts/Set-FileServerCluster.pester.ps1
+!/scripts/Set-ClusterNameParameters.ps1
+!/scripts/Set-ClusterNameParameters.pester.ps1
+!/scripts/Set-ClusterSharedDisks.ps1
+!/scripts/Set-ClusterSharedDisks.pester.ps1
+!/scripts/Set-ClusteredFileServer.ps1
+!/scripts/Set-ClusteredFileServer.pester.ps1
+!/scripts/Set-ClusteredSmbShare.ps1
+!/scripts/Set-ClusteredSmbShare.pester.ps1
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
 !/scripts/compose-and-run.sh
