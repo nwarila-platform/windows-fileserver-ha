@@ -1,0 +1,5 @@
+# Build marker (org three-file convention — powershell-template
+# docs/reference/pester-pair-testing.md §1). The ansible-build resolves this
+# stub by copying the script named below to the matching .ps1 in this
+# directory. The materialized file is a build artifact and is never committed.
+scripts/Set-ClusteredFileServer.ps1

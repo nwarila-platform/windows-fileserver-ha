@@ -26,3 +26,181 @@
       values. An empty or malformed baseline converges nothing and usually means an override
       replaced the whole 'fileserver:' dict without restating it.
     quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Cluster And File Server Names'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.service_account is string
+      - fileserver_running.cluster.service_account is match('^[A-Za-z0-9][A-Za-z0-9._\\\\-]*$')
+      - fileserver_running.cluster.name is string
+      - fileserver_running.cluster.name is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+      - fileserver_running.cluster.name_resource is string
+      - fileserver_running.cluster.name_resource is match('^[A-Za-z0-9][A-Za-z0-9 ._-]*$')
+      - fileserver_running.cluster.file_server.name is string
+      - fileserver_running.cluster.file_server.name is match('^[A-Za-z0-9][A-Za-z0-9._-]*$')
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.service_account, name, name_resource, and
+      file_server.name must be non-empty strings containing only their supported naming
+      characters.
+    quiet: true
+
+- name: 'VALIDATE | Require The Ratified Shared Disk Ownership Topology'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.nodes is sequence
+      - fileserver_running.cluster.nodes is not string
+      - fileserver_running.cluster.nodes | length == 4
+      - fileserver_running.cluster.nodes | unique | length == 4
+      - fileserver_running.cluster.nodes | reject('string') | list | length == 0
+      - fileserver_running.cluster.shared_disks | length == 2
+      - fileserver_running.cluster.shared_disks | map(attribute='function') | unique | length == 2
+      - >-
+        fileserver_running.cluster.shared_disks
+        | selectattr('fileserver_home', 'equalto', true) | list | length == 1
+      - >-
+        fileserver_running.cluster.shared_disks[0].owners
+        | intersect(fileserver_running.cluster.shared_disks[1].owners) | length == 0
+      - >-
+        fileserver_running.cluster.shared_disks
+        | map(attribute='owners') | map('length') | list == [2, 2]
+      - >-
+        fileserver_running.cluster.shared_disks[0].owners | unique | length == 2
+      - >-
+        fileserver_running.cluster.shared_disks[1].owners | unique | length == 2
+      - >-
+        fileserver_running.cluster.shared_disks[0].owners
+        | difference(fileserver_running.cluster.nodes) | length == 0
+      - >-
+        fileserver_running.cluster.shared_disks[1].owners
+        | difference(fileserver_running.cluster.nodes) | length == 0
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.nodes and shared_disks must declare four unique
+      string nodes, two disjoint two-node owner sets, unique functions, and exactly one
+      fileserver_home disk.
+    quiet: true
+
+- name: 'VALIDATE | Require Disjoint IPv4 Address Declarations'
+  vars:
+    __fileserver_ipv4_pattern__: '^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$'
+    __fileserver_all_addresses__: >-
+      {{ fileserver_running.cluster.static_addresses
+         + fileserver_running.cluster.file_server.static_addresses
+         + fileserver_running.cluster.file_server.ignored_network_addresses }}
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.static_addresses | length == 4
+      - fileserver_running.cluster.static_addresses | unique | length == 4
+      - fileserver_running.cluster.file_server.static_addresses | length == 2
+      - fileserver_running.cluster.file_server.static_addresses | unique | length == 2
+      - fileserver_running.cluster.file_server.ignored_network_addresses | length == 2
+      - fileserver_running.cluster.file_server.ignored_network_addresses | unique | length == 2
+      - __fileserver_all_addresses | reject('match', __fileserver_ipv4_pattern__) | list | length == 0
+      - __fileserver_all_addresses | unique | length == 8
+    fail_msg: >-
+      Refusing to run: fileserver.cluster static_addresses, file_server.static_addresses,
+      and file_server.ignored_network_addresses must be unique IPv4 strings with lengths
+      four, two, and two and must be pairwise disjoint.
+    quiet: true
+
+- name: 'VALIDATE | Require Runtime-Only Shared Disk Identity'
+  ansible.builtin.assert:
+    that:
+      - disk is mapping
+      - disk.keys() | list | sort == ['fileserver_home', 'function', 'owners']
+      - disk.function is string
+      - disk.function | length > 0
+      - disk.fileserver_home is boolean
+    fail_msg: >-
+      Refusing to run: each fileserver.cluster.shared_disks item must contain exactly
+      function, owners, and fileserver_home; runtime volume IDs and observed disk or resource
+      identity do not belong in defaults.
+    quiet: true
+  loop: "{{ fileserver_running.cluster.shared_disks }}"
+  loop_control:
+    label: "{{ disk.function | default('malformed shared disk') }}"
+    loop_var: 'disk'
+
+- name: 'VALIDATE | Require The Ratified Cluster Name Parameters'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.name_parameters.register_all_providers_ip is integer
+      - fileserver_running.cluster.name_parameters.register_all_providers_ip == 0
+      - fileserver_running.cluster.name_parameters.host_record_ttl is integer
+      - fileserver_running.cluster.name_parameters.host_record_ttl == 300
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.name_parameters.register_all_providers_ip must be
+      integer 0 and host_record_ttl must be integer 300.
+    quiet: true
+
+- name: 'VALIDATE | Require The Ratified Clustered Share Properties'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.share.name == 'data'
+      - fileserver_running.cluster.share.path == 'D:\shares\data'
+      - fileserver_running.cluster.share.description is string
+      - fileserver_running.cluster.share.description | length > 0
+      - fileserver_running.cluster.share.continuously_available is boolean
+      - fileserver_running.cluster.share.encrypt_data is boolean
+      - fileserver_running.cluster.share.folder_enumeration_mode == 'AccessBased'
+      - fileserver_running.cluster.share.caching_mode == 'None'
+      - >-
+        fileserver_running.cluster.share.encrypt_data
+        == fileserver_running.smb.settings.EncryptData
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.share must declare the ratified data path,
+      non-empty description, CA/access-based/no-cache settings, and encryption equal to
+      fileserver.smb.settings.EncryptData.
+    quiet: true
+
+- name: 'VALIDATE | Require The Exact Clustered Share Access Policy'
+  vars:
+    __fileserver_expected_ntfs_access__:
+      - principal: 'NT AUTHORITY\SYSTEM'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+        inheritance_flags: 'ContainerInherit,ObjectInherit'
+        propagation_flags: 'None'
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+        inheritance_flags: 'ContainerInherit,ObjectInherit'
+        propagation_flags: 'None'
+      - principal: 'TCN\Domain Users'
+        access_control_type: 'Allow'
+        rights: 'Modify'
+        inheritance_flags: 'ContainerInherit,ObjectInherit'
+        propagation_flags: 'None'
+    __fileserver_expected_share_access__:
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        access_right: 'Full'
+      - principal: 'TCN\Domain Users'
+        access_control_type: 'Allow'
+        access_right: 'Change'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.share.ntfs_access | length == 3
+      - >-
+        fileserver_running.cluster.share.ntfs_access
+        | map(attribute='principal') | unique | length == 3
+      - >-
+        __fileserver_expected_ntfs_access__
+        | difference(fileserver_running.cluster.share.ntfs_access) | length == 0
+      - >-
+        fileserver_running.cluster.share.ntfs_access
+        | difference(__fileserver_expected_ntfs_access__) | length == 0
+      - fileserver_running.cluster.share.share_access | length == 2
+      - >-
+        fileserver_running.cluster.share.share_access
+        | map(attribute='principal') | unique | length == 2
+      - >-
+        __fileserver_expected_share_access__
+        | difference(fileserver_running.cluster.share.share_access) | length == 0
+      - >-
+        fileserver_running.cluster.share.share_access
+        | difference(__fileserver_expected_share_access__) | length == 0
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.share.ntfs_access and share_access must equal the
+      ratified protected-DACL and two-principal share policy exactly, with unique principals,
+      Allow entries only, and no extension entries.
+    quiet: true

@@ -9,9 +9,11 @@ An instance id written into a file here would be wrong the moment the run that p
 
 The file is in two parts. The first is the only part that is about this repository: the region, the
 four tag filters that select one run's instance — `RepositoryId`, `RunId` and `Repository` from the
-workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and the `fileserver_nodes` / `fileserver_witness`
-group the play addresses. Everything below that is carried unchanged by any repository deploying a
-host this way.
+workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and three composed
+groups. `fileserver_nodes` contains the four cluster nodes, `fileserver_witness` contains the
+workgroup witness, and overlapping singleton `fileserver_cluster_former` selects the exact Name
+tag `tcnaw-hafs01a`. It is an identity contract, not the first host after sorting. Everything below
+that is carried unchanged by any repository deploying a host this way.
 
 Hosts are named by their **Name tag**, which is the hostname Terraform declares, so
 `inventory_hostname` is the system's own name and nothing downstream has to be told it again. Every

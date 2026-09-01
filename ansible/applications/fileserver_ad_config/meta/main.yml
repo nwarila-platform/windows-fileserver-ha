@@ -1,0 +1,32 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/meta/main.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+# Role metadata for fileserver_ad_config. Description-only (style guide §8): NOT an enforcing
+# argument spec. The role's tasks/validate.yml enforces its merged-config guards.
+#
+# REQUIRED INPUT — 'service_account.password'. It has no default because the URL that resolves it
+# carries the account id, so the caller composes it; the playbook reads it with the 'secret'
+# lookup, which fails loudly on a missing, unreadable or empty object. Every other input is
+# defaulted in defaults/main.yml.
+#
+# =========================================================================================== #
+---
+galaxy_info:
+  role_name: 'fileserver_ad_config'
+  namespace: 'nwarila_platform'
+  author: 'nwarila-platform'
+  description: >-
+    Creates and maintains the directory service account a Windows failover cluster is formed
+    with, and the rights that account needs. Runs against a domain controller, never against a
+    cluster node.
+  license: 'MIT'
+  min_ansible_version: '2.19'
+  platforms:
+    - name: 'Windows'
+      versions:
+        - 'all'
+  galaxy_tags:
+    - 'windows'
+    - 'directory'
+
+dependencies: []

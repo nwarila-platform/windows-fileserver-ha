@@ -29,13 +29,36 @@
       }
     },
     {
-      "Sid": "ReadOnlyTheNetworkAndDirectoryArtifacts",
+      "Sid": "ReadAppRepoBucketWideNoListing",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::<account-id>-apprepo/*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceAccount": "<account-id>"
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyTheDomainJoinAndOpenVpnCredentials",
       "Effect": "Allow",
       "Action": "s3:GetObject",
       "Resource": [
-        "arn:aws:s3:::<account-id>-apprepo/OpenVPN.net/OpenVPN Community/*/OpenVPN_Community_amd64.msi",
-        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn",
-        "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt"
+        "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt",
+        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceAccount": "<account-id>"
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyTheClusterManagerSecret",
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::<account-id>-ansible/windows-fileserver-ha/svc-fscluster-mgr_password.secret"
       ],
       "Condition": {
         "StringEquals": {

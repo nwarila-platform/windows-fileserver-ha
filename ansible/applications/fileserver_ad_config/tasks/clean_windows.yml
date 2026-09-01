@@ -1,0 +1,13 @@
+# =========================================================================================== #
+# File: '{{ role_path }}/tasks/clean_windows.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# What this role removes to leave a system ready for a snapshot -- caches and working files, not
+# the thing itself. Removing what this role created is 'absent', not 'clean'.
+#
+# This role writes nothing to any host: it acts on the directory, through a domain controller it
+# does not own. There is therefore nothing on disk for it to clear, and 'clean' is a no-op that
+# exists so the state is answerable rather than an error.
+#
+# =========================================================================================== #
+---

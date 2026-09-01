@@ -6,14 +6,8 @@
 # in vars/ over this map and publishes the result as 'fileserver_running'; tasks read only the
 # merged map, never these keys directly.
 #
-# WHAT BELONGS HERE: values that are universally safe — true for anyone running this role,
-# whatever their account or site. The SMB hardening baseline below is this repository's declared
-# security posture, not a site value; a site that must interoperate with legacy clients
-# overrides individual keys through the 'fileserver:' dict.
-#
-# WHAT DOES NOT: anything deployment-specific. Domain identity, DNS, witness paths, and shared
-# disk identities arrive with EP3/EP4 and will be supplied by the PLAYBOOK, described in
-# meta/main.yml, and enforced by tasks/validate.yml — never defaulted here.
+# This single-fleet role defaults the ratified topology and security policy. Secrets and runtime
+# AWS identifiers never belong in defaults; the playbook resolves them only at their use boundary.
 #
 # =========================================================================================== #
 ---
@@ -40,3 +34,64 @@ fileserver_defaults:
       AuditSmb1Access: true
 
   #endregion --- [ SMB server baseline ] ----------------------------------------------------- #
+  #region ------ [ Cluster ] ----------------------------------------------------------------- #
+  cluster:
+    service_account: 'TCN\svc-fscluster-mgr'
+    name: 'TCNAW-FSCL01'
+    nodes:
+      - 'tcnaw-hafs01a'
+      - 'tcnaw-hafs02a'
+      - 'tcnaw-hafs01b'
+      - 'tcnaw-hafs02b'
+    static_addresses:
+      - '10.0.1.11'
+      - '10.0.33.11'
+      - '10.0.65.11'
+      - '10.0.97.11'
+    name_resource: 'Cluster Name'
+    name_parameters:
+      register_all_providers_ip: 0
+      host_record_ttl: 300
+    shared_disks:
+      - function: 'Cluster Shared Volume (AZ A)'
+        owners: ['tcnaw-hafs01a', 'tcnaw-hafs02a']
+        fileserver_home: true
+      - function: 'Cluster Shared Volume (AZ B)'
+        owners: ['tcnaw-hafs01b', 'tcnaw-hafs02b']
+        fileserver_home: false
+    file_server:
+      name: 'TCNAW-HAFS01'
+      static_addresses: ['10.0.1.12', '10.0.33.12']
+      ignored_network_addresses: ['10.0.64.0', '10.0.96.0']
+    share:
+      name: 'data'
+      path: 'D:\shares\data'
+      description: 'Highly available file data'
+      continuously_available: true
+      folder_enumeration_mode: 'AccessBased'
+      caching_mode: 'None'
+      encrypt_data: true
+      ntfs_access:
+        - principal: 'NT AUTHORITY\SYSTEM'
+          access_control_type: 'Allow'
+          rights: 'FullControl'
+          inheritance_flags: 'ContainerInherit,ObjectInherit'
+          propagation_flags: 'None'
+        - principal: 'BUILTIN\Administrators'
+          access_control_type: 'Allow'
+          rights: 'FullControl'
+          inheritance_flags: 'ContainerInherit,ObjectInherit'
+          propagation_flags: 'None'
+        - principal: 'TCN\Domain Users'
+          access_control_type: 'Allow'
+          rights: 'Modify'
+          inheritance_flags: 'ContainerInherit,ObjectInherit'
+          propagation_flags: 'None'
+      share_access:
+        - principal: 'BUILTIN\Administrators'
+          access_control_type: 'Allow'
+          access_right: 'Full'
+        - principal: 'TCN\Domain Users'
+          access_control_type: 'Allow'
+          access_right: 'Change'
+  #endregion --- [ Cluster ] ----------------------------------------------------------------- #
