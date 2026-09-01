@@ -570,11 +570,13 @@
                 nodes = $Nodes
                 register_all_providers_ip = [int](Read-Parameter $NameResources[0] 'RegisterAllProvidersIP')
                 host_record_ttl = [int](Read-Parameter $NameResources[0] 'HostRecordTTL')
+                status_dns = [int](Read-Parameter $NameResources[0] 'StatusDNS')
                 quorum_type = [string](Get-ClusterQuorum -Cluster $ClusterName).QuorumType
                 role_count = $RoleGroups.Count
                 role = [PSCustomObject]@{
                   name = [string]$Role.Name
                   state = [string]$Role.State
+                  status_dns = [int](Read-Parameter $RoleNameResources[0] 'StatusDNS')
                   owner_node = ([string]$Role.OwnerNode).ToLowerInvariant()
                   preferred_owners = @(Get-ClusterOwnerNode -Group $Role | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
                   resources = @($RoleResources | ForEach-Object {
@@ -778,6 +780,7 @@
                 | rejectattr('state', 'equalto', 'Up') | list | length == 0
               - __fileserver_final_cluster_state__.register_all_providers_ip == 0
               - __fileserver_final_cluster_state__.host_record_ttl == 300
+              - __fileserver_final_cluster_state__.status_dns == 0
               - __fileserver_final_cluster_state__.quorum_type == 'NodeMajority'
               - __fileserver_final_disks__.results | length == 2
               - >-
@@ -809,6 +812,7 @@
               - __fileserver_final_cluster_state__.role_count == 1
               - __fileserver_final_cluster_state__.role.name == 'TCNAW-HAFS01'
               - __fileserver_final_cluster_state__.role.state == 'Online'
+              - __fileserver_final_cluster_state__.role.status_dns == 0
               - __fileserver_final_cluster_state__.role.owner_node in __fileserver_home_disk__.owners
               - __fileserver_final_cluster_state__.role.preferred_owners == __fileserver_home_disk__.owners
               - __fileserver_final_role_ips__ | length == 2
