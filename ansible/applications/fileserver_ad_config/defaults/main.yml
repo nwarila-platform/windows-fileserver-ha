@@ -38,21 +38,14 @@ fileserver_ad_config_defaults:
   #endregion --- [ Defaults: File Server Access Point ] -------------------------------------- #
 
   #region ------ [ Defaults: Cluster Node Address Records ] ---------------------------------- #
-  # The nodes are statically addressed by the deployment, so their records are declared, not
-  # dynamically registered: a multi-homed member sends its dynamic update to the cloud resolver,
-  # which discards it, while the tunnel's namespace rule already sends RESOLUTION here. Records
-  # where the rule looks close that gap deterministically.
+  # The nodes are statically addressed by the deployment, so their records stay declared: nothing
+  # else updates them. The file-server access point now registers itself because the framework
+  # sends adapter DNS to the domain controllers. Under RegisterAllProvidersIP=0 the cluster owns
+  # its single active-provider record, so declaring that name here would fight its registration.
   dns_zone: 'tcn.trinitytechnicalservices.com'
   nodes:
     tcnaw-hafs01a: '10.0.1.10'
     tcnaw-hafs02a: '10.0.33.10'
     tcnaw-hafs01b: '10.0.65.10'
     tcnaw-hafs02b: '10.0.97.10'
-    # The file server's client access point publishes BOTH of its providers: the cluster cannot
-    # register dynamically in this environment (updates die at the cloud resolver), and a single
-    # static address would go stale on failover. Two records with a short TTL is what
-    # RegisterAllProvidersIP=1 would publish for this name; clients retry the dead provider.
-    tcnaw-hafs01:
-      - '10.0.1.12'
-      - '10.0.33.12'
   #endregion --- [ Defaults: Cluster Node Address Records ] ---------------------------------- #
