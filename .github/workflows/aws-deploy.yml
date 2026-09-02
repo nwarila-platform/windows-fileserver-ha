@@ -1,7 +1,9 @@
 # =========================================================================================== #
 # AWS Deploy — windows-fileserver-ha
 # ------------------------------------------------------------------------------------------- #
-# Ephemeral lifecycle: terraform init/apply -> ansible -> terraform destroy on the normal path.
+# Ephemeral lifecycle: terraform init/apply -> ansible -> terraform destroy on the normal path;
+# workflow_dispatch alone may skip the application playbook for a terraform apply -> hold ->
+# destroy bed.
 # Terraform is DATA-ONLY here (a plain tfvars, no .tf files); resources live in the pinned
 # aws-terraform-framework, configuration in the pinned ansible-framework + this repo's role.
 #
@@ -31,6 +33,11 @@ name: AWS Deploy
 'on':
   workflow_dispatch:
     inputs:
+      converge:
+        description: Converge the guest before teardown
+        type: choice
+        options: [ 'true', 'false' ]
+        default: 'true'
       hold_minutes:
         description: Hold the converged guest before teardown
         type: choice
@@ -42,6 +49,11 @@ name: AWS Deploy
     # Avoid the top-of-hour load spike documented for scheduled Actions workflows.
     - cron: '17 9 * * 1'
 permissions: {}
+
+# One condition governs both application-playbook execution and incident recovery.
+env:
+  CONVERGED: >-
+    ${{ github.event_name != 'workflow_dispatch' || inputs.converge != 'false' }}
 
 # One boundary, one state key — never two runs at once, never cancel a live apply.
 concurrency:
@@ -348,6 +360,7 @@ jobs:
       # inventory plugin filters live AWS instances to this repository and run before exposing
       # one target. The budget guards against a hung converge without cutting a working one short.
       - name: Run the application playbook
+        if: env.CONVERGED == 'true'
         timeout-minutes: 60
         working-directory: .frameworks/ansible-framework
         env:
@@ -463,6 +476,11 @@ jobs:
       - name: Update or resolve the lifecycle incident
         run: |
           set -euo pipefail
+
+          if [ "${LIFECYCLE_RESULT}" = success ] && [ "${CONVERGED}" != 'true' ]; then
+            echo 'bed-only dispatch; the lifecycle proof did not run; incident state untouched'
+            exit 0
+          fi
 
           gh label create "${INCIDENT_LABEL}" --repo "${GITHUB_REPOSITORY}" --force \
             --color B60205 --description 'Owned exclusively by recurring automation incidents' > /dev/null
