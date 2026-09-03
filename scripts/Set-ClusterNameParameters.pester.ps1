@@ -18,16 +18,44 @@ BeforeAll {
     Remove-Variable -Name 'Ansible' -Scope 'Global' -Force -ErrorAction 'SilentlyContinue'
   }
 
+  Function Assert-ResultPrimitiveLeaves {
+    Param ([AllowNull()] [System.Object]$Value, [System.String]$Path = '$')
+    If ($Null -eq $Value -or $Value -is [System.String] -or $Value -is [System.Int32] -or $Value -is [System.Boolean]) { Return }
+    If ($Value -is [PSCustomObject]) {
+      ForEach ($Property In $Value.PSObject.Properties) {
+        Assert-ResultPrimitiveLeaves -Value $Property.Value -Path ('{0}.{1}' -f $Path, $Property.Name)
+      }
+      Return
+    }
+    If ($Value -is [System.Array]) {
+      For ($Index = 0; $Index -lt $Value.Count; $Index++) {
+        Assert-ResultPrimitiveLeaves -Value $Value[$Index] -Path ('{0}[{1}]' -f $Path, $Index)
+      }
+      Return
+    }
+    Throw ('Result leaf {0} has forbidden type {1}.' -f $Path, $Value.GetType().FullName)
+  }
+
+  Function Get-Cluster {
+    $global:FsHaNameClusterReads++
+    [PSCustomObject]@{ Name = $global:FsHaNameClusterName }
+  }
+
   Function Get-ClusterResource {
-    Param ([System.String]$Cluster)
+    Param ([System.Object]$InputObject)
     $global:FsHaNameReads++
+    $global:FsHaNameClusterInputs += [System.String]$InputObject.Name
     If ($global:FsHaNameResourceCount -eq 0) { Return @() }
     $Items = @()
     For ($Index = 0; $Index -lt $global:FsHaNameResourceCount; $Index++) {
-      $Items += [PSCustomObject]@{
-        Name         = $(If ($Index -eq 0) { 'Cluster Name' } Else { 'Cluster Name' })
-        ResourceType = $global:FsHaNameResourceType
-        OwnerGroup   = $global:FsHaNameOwnerGroup
+      If ($Index -eq 0 -and $Null -ne $global:FsHaNameResourceObject) {
+        $Items += $global:FsHaNameResourceObject
+      } Else {
+        $Items += [PSCustomObject]@{
+          Name         = $(If ($Index -eq 0) { 'Cluster Name' } Else { 'Cluster Name' })
+          ResourceType = $global:FsHaNameResourceType
+          OwnerGroup   = $global:FsHaNameOwnerGroup
+        }
       }
     }
     $Items
@@ -54,13 +82,17 @@ BeforeAll {
 }
 
 AfterAll {
-  Remove-Variable -Name 'FsHaNameReads', 'FsHaNameResourceCount', 'FsHaNameResourceType', 'FsHaNameOwnerGroup', 'FsHaNameValues', 'FsHaNameWrites', 'FsHaNameFrozen', 'FsHaNameMissingParameter' -Scope 'Global' -ErrorAction 'SilentlyContinue'
+  Remove-Variable -Name 'FsHaNameClusterName', 'FsHaNameClusterReads', 'FsHaNameClusterInputs', 'FsHaNameReads', 'FsHaNameResourceCount', 'FsHaNameResourceObject', 'FsHaNameResourceType', 'FsHaNameOwnerGroup', 'FsHaNameValues', 'FsHaNameWrites', 'FsHaNameFrozen', 'FsHaNameMissingParameter' -Scope 'Global' -ErrorAction 'SilentlyContinue'
 }
 
 Describe 'Set-ClusterNameParameters' {
   BeforeEach {
+    $global:FsHaNameClusterName = 'TCNAW-FSCL01'
+    $global:FsHaNameClusterReads = 0
+    $global:FsHaNameClusterInputs = @()
     $global:FsHaNameReads = 0
     $global:FsHaNameResourceCount = 1
+    $global:FsHaNameResourceObject = $Null
     $global:FsHaNameResourceType = 'Network Name'
     $global:FsHaNameOwnerGroup = 'Cluster Group'
     $global:FsHaNameValues = @{ RegisterAllProvidersIP = 0; HostRecordTTL = 300 }
@@ -75,6 +107,36 @@ Describe 'Set-ClusterNameParameters' {
     $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -ResourceName 'Cluster Name' -RegisterAllProvidersIP 0 -HostRecordTTL 300 | ConvertFrom-Json
     $Result.changed | Should -BeFalse
     $Result.actions | Should -HaveCount 0
+    $global:FsHaNameWrites | Should -HaveCount 0
+    $global:FsHaNameClusterReads | Should -Be 1
+    $global:FsHaNameClusterInputs | Should -Be @('TCNAW-FSCL01')
+  }
+
+  It 'exports only serialization-safe primitive result leaves' {
+    $RawResource = [System.IO.MemoryStream]::new()
+    Try {
+      $RawResource | Add-Member -NotePropertyName Name -NotePropertyValue 'Cluster Name'
+      $RawResource | Add-Member -NotePropertyName ResourceType -NotePropertyValue 'Network Name'
+      $RawResource | Add-Member -NotePropertyName OwnerGroup -NotePropertyValue 'Cluster Group'
+      $global:FsHaNameResourceObject = $RawResource
+      $Context = New-AnsibleContext
+
+      $Output = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -ResourceName 'Cluster Name' -RegisterAllProvidersIP 0 -HostRecordTTL 300
+
+      $Output | Should -BeNullOrEmpty
+      { $Context.Result | ConvertTo-Json -Depth 6 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop | Out-Null } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $Context.Result } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $RawResource } | Should -Throw '*System.IO.MemoryStream*'
+      $Context.Result.before.host_record_ttl | Should -Be 300
+    } Finally {
+      $RawResource.Dispose()
+    }
+  }
+
+  It 'rejects a differently named local cluster before resource reads or writes' {
+    $global:FsHaNameClusterName = 'OTHER'
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -ResourceName 'Cluster Name' -RegisterAllProvidersIP 0 -HostRecordTTL 300 } | Should -Throw '*belongs to cluster OTHER*'
+    $global:FsHaNameReads | Should -Be 0
     $global:FsHaNameWrites | Should -HaveCount 0
   }
 

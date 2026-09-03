@@ -226,7 +226,7 @@
             msg: 'Restarting to apply the failover cluster prerequisites.'
             post_reboot_delay: 0
             pre_reboot_delay: 2
-            reboot_timeout: 600
+            reboot_timeout: 1200
 
         # A stale marker means an out-of-band restart already crossed the recorded boot boundary.
         # A current marker reaches this task only after win_reboot proved a different boot token.
