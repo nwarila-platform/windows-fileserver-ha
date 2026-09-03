@@ -28,6 +28,23 @@ BeforeAll {
     $global:Ansible
   }
   Function Remove-AnsibleContext { Remove-Variable -Name Ansible -Scope Global -Force -ErrorAction SilentlyContinue }
+  Function Assert-ResultPrimitiveLeaves {
+    Param ([AllowNull()] [System.Object]$Value, [System.String]$Path = '$')
+    If ($Null -eq $Value -or $Value -is [System.String] -or $Value -is [System.Int32] -or $Value -is [System.Boolean]) { Return }
+    If ($Value -is [PSCustomObject]) {
+      ForEach ($Property In $Value.PSObject.Properties) {
+        Assert-ResultPrimitiveLeaves -Value $Property.Value -Path ('{0}.{1}' -f $Path, $Property.Name)
+      }
+      Return
+    }
+    If ($Value -is [System.Array]) {
+      For ($Index = 0; $Index -lt $Value.Count; $Index++) {
+        Assert-ResultPrimitiveLeaves -Value $Value[$Index] -Path ('{0}[{1}]' -f $Path, $Index)
+      }
+      Return
+    }
+    Throw ('Result leaf {0} has forbidden type {1}.' -f $Path, $Value.GetType().FullName)
+  }
   Function New-FakeIdentity {
     Param ([System.String]$Value)
     $Identity = [PSCustomObject]@{ Value = $Value }
@@ -214,6 +231,32 @@ Describe 'Set-ClusteredSmbShare' {
     $Output | Should -BeNullOrEmpty
     $Context.Changed | Should -BeFalse
     $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'exports only serialization-safe primitive result leaves' {
+    $RawShare = [System.IO.MemoryStream]::new()
+    Try {
+      $RawShare | Add-Member -NotePropertyName Name -NotePropertyValue 'data'
+      $RawShare | Add-Member -NotePropertyName ScopeName -NotePropertyValue 'TCNAW-HAFS01'
+      $RawShare | Add-Member -NotePropertyName Path -NotePropertyValue 'D:\shares\data'
+      $RawShare | Add-Member -NotePropertyName Description -NotePropertyValue 'Highly available file data'
+      $RawShare | Add-Member -NotePropertyName ContinuouslyAvailable -NotePropertyValue $True
+      $RawShare | Add-Member -NotePropertyName FolderEnumerationMode -NotePropertyValue 'AccessBased'
+      $RawShare | Add-Member -NotePropertyName CachingMode -NotePropertyValue 'None'
+      $RawShare | Add-Member -NotePropertyName EncryptData -NotePropertyValue $True
+      $global:FsHaShareObject = $RawShare
+      $Context = New-AnsibleContext
+
+      $Output = & $script:ScriptPath @script:Common -Mode Share
+
+      $Output | Should -BeNullOrEmpty
+      { $Context.Result | ConvertTo-Json -Depth 6 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop | Out-Null } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $Context.Result } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $RawShare } | Should -Throw '*System.IO.MemoryStream*'
+      $Context.Result.after.share.share.name | Should -Be 'data'
+    } Finally {
+      $RawShare.Dispose()
+    }
   }
 
   It 'creates an absent share with every exact argument' {

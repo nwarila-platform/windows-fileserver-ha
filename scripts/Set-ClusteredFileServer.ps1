@@ -117,7 +117,7 @@ $GetResourceParameterValue = {
 }
 
 $GetHomeDiskResource = {
-  Param ([System.String]$Cluster, [System.String]$VolumeId)
+  Param ([System.Object]$Cluster, [System.String]$VolumeId)
   $Token = $VolumeId.ToLowerInvariant().Replace('-', '')
   $LocalDisks = @(Get-Disk)
   $LocalMatches = @($LocalDisks | Where-Object -FilterScript {
@@ -125,7 +125,7 @@ $GetHomeDiskResource = {
     })
   If ($LocalMatches.Count -ne 1) { Throw ('Home volume {0} must match exactly one local disk.' -f $VolumeId) }
   $DiskResourceMatches = @()
-  ForEach ($Resource In @(Get-ClusterResource -Cluster $Cluster | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'Physical Disk' })) {
+  ForEach ($Resource In @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'Physical Disk' })) {
     $Guid = ([System.String](& $GetResourceParameterValue -Resource $Resource -Name 'DiskIdGuid')).Trim('{}')
     $Mapped = @($LocalDisks | Where-Object -FilterScript { ([System.String]$PSItem.Guid).Trim('{}') -ieq $Guid })
     If ($Mapped.Count -eq 1 -and (([System.String]$Mapped[0].UniqueId).ToLowerInvariant() -replace '[^0-9a-z]', '').Contains($Token)) {
@@ -134,7 +134,8 @@ $GetHomeDiskResource = {
   }
   If ($DiskResourceMatches.Count -ne 1) { Throw ('Home volume {0} must map to exactly one Physical Disk resource.' -f $VolumeId) }
   $Resource = $DiskResourceMatches[0]
-  $PossibleOwners = @(Get-ClusterOwnerNode -InputObject $Resource | ForEach-Object -Process { ([System.String]$PSItem.Name).ToLowerInvariant() } | Sort-Object)
+  $OwnerNodeState = Get-ClusterOwnerNode -InputObject $Resource
+  $PossibleOwners = @($OwnerNodeState.OwnerNodes | ForEach-Object -Process { ([System.String]$PSItem.Name).ToLowerInvariant() } | Sort-Object)
   $DesiredOwners = @($Owners | ForEach-Object -Process { $PSItem.ToLowerInvariant() } | Sort-Object)
   If ([System.String]$Resource.State -ne 'Online' -or @(Compare-Object -ReferenceObject $DesiredOwners -DifferenceObject $PossibleOwners).Count -gt 0) {
     Throw ('Home disk {0} must already be Online and owner-scoped to the declared owners.' -f $Resource.Name)
@@ -143,12 +144,12 @@ $GetHomeDiskResource = {
 }
 
 $GetRoleState = {
-  Param ([System.String]$Cluster, [System.String]$Name)
-  $Groups = @(Get-ClusterGroup -Cluster $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq $Name })
+  Param ([System.Object]$Cluster, [System.String]$Name)
+  $Groups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq $Name })
   If ($Groups.Count -gt 1) { Throw ('File-server role {0} is ambiguous.' -f $Name) }
   If ($Groups.Count -eq 0) { Return $Null }
   $Group = $Groups[0]
-  $Resources = @(Get-ClusterResource -Cluster $Cluster | Where-Object -FilterScript { [System.String]$PSItem.OwnerGroup -ieq $Name })
+  $Resources = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.OwnerGroup -ieq $Name })
   $NameResources = @($Resources | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'Network Name' })
   If ($NameResources.Count -ne 1) { Throw ('Role {0} must expose exactly one Network Name resource.' -f $Name) }
   $IpResources = @($Resources | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'IP Address' })
@@ -179,12 +180,103 @@ $GetRoleState = {
     name             = [System.String]$Group.Name
     state            = [System.String]$Group.State
     owner_node       = [System.String]$Group.OwnerNode
-    preferred_owners = @(Get-ClusterOwnerNode -Group $Group | ForEach-Object -Process { [System.String]$PSItem.Name })
+    preferred_owners = @((Get-ClusterOwnerNode -Group $Group).OwnerNodes | ForEach-Object -Process { [System.String]$PSItem.Name })
     resources        = $Resources
     name_resource    = $NameResources[0]
     ip_resources     = $Ips
     physical_disks   = @($Resources | Where-Object -FilterScript { [System.String]$PSItem.ResourceType -eq 'Physical Disk' })
     dependency       = $Dependency
+  }
+}
+
+# Result payloads contain primitives only; live cmdlet objects remain internal.
+$ConvertToSafeRoleState = {
+  Param ([System.Object]$State)
+  If ($Null -eq $State) { Return $Null }
+  [PSCustomObject]@{
+    name               = [System.String]$State.name
+    state              = [System.String]$State.state
+    owner_node         = [System.String]$State.owner_node
+    preferred_owners   = @($State.preferred_owners | ForEach-Object -Process { [System.String]$PSItem })
+    resources          = @($State.resources | ForEach-Object -Process {
+        [PSCustomObject]@{
+          name          = [System.String]$PSItem.Name
+          resource_type = [System.String]$PSItem.ResourceType
+          state         = [System.String]$PSItem.State
+        }
+      })
+    name_resource_name = [System.String]$State.name_resource.Name
+    ip_resources       = @($State.ip_resources | ForEach-Object -Process {
+        [PSCustomObject]@{
+          name        = [System.String]$PSItem.name
+          state       = [System.String]$PSItem.state
+          address     = [System.String]$PSItem.address
+          network     = [System.String]$PSItem.network
+          subnet_mask = [System.String]$PSItem.subnet_mask
+          enable_dhcp = [System.Int32]$PSItem.enable_dhcp
+        }
+      })
+    physical_disks     = @($State.physical_disks | ForEach-Object -Process {
+        [PSCustomObject]@{ name = [System.String]$PSItem.Name; state = [System.String]$PSItem.State }
+      })
+    dependency         = [System.String]$State.dependency
+  }
+}
+
+$ConvertToLdapFilterValue = {
+  Param ([System.String]$Value)
+  $Value.Replace('\', '\5c').Replace('*', '\2a').Replace('(', '\28').Replace(')', '\29').Replace("$([System.Char]0)", '\00')
+}
+
+$FindComputerAccount = Get-Variable -Name:'SetClusteredFileServerFindComputerAccount' -ValueOnly -ErrorAction:'SilentlyContinue'
+If ($Null -eq $FindComputerAccount) {
+  $FindComputerAccount = {
+    Param ([System.String]$SamAccountName)
+    $RootDse = [ADSI]'LDAP://RootDSE'
+    Try {
+      $SearchRoot = [ADSI]('LDAP://{0}' -f [System.String]$RootDse.Properties['defaultNamingContext'].Value)
+      Try {
+        $Searcher = [System.DirectoryServices.DirectorySearcher]::new($SearchRoot)
+        Try {
+          $Searcher.Filter = '(&(objectCategory=computer)(sAMAccountName={0}))' -f (& $ConvertToLdapFilterValue -Value $SamAccountName)
+          $Null = $Searcher.PropertiesToLoad.Add('userAccountControl')
+          $SearchResults = $Searcher.FindAll()
+          Try {
+            $DirectoryMatches = @($SearchResults)
+            If ($DirectoryMatches.Count -gt 1) { Throw ('Computer account {0} is ambiguous.' -f $SamAccountName) }
+            If ($DirectoryMatches.Count -eq 0) { Return $Null }
+            $UserAccountControl = @($DirectoryMatches[0].Properties['useraccountcontrol'])
+            If ($UserAccountControl.Count -ne 1) { Throw ('Computer account {0} has no single userAccountControl value.' -f $SamAccountName) }
+            [PSCustomObject]@{
+              path                 = [System.String]$DirectoryMatches[0].Path
+              user_account_control = [System.Int32]$UserAccountControl[0]
+            }
+          } Finally {
+            $SearchResults.Dispose()
+          }
+        } Finally {
+          $Searcher.Dispose()
+        }
+      } Finally {
+        $SearchRoot.Dispose()
+      }
+    } Finally {
+      $RootDse.Dispose()
+    }
+  }
+}
+
+$SetComputerAccountControl = Get-Variable -Name:'SetClusteredFileServerSetComputerAccountControl' -ValueOnly -ErrorAction:'SilentlyContinue'
+If ($Null -eq $SetComputerAccountControl) {
+  $SetComputerAccountControl = {
+    Param ([System.String]$Path, [System.Int32]$UserAccountControl)
+    $ComputerAccount = [ADSI]$Path
+    Try {
+      $ComputerAccount.Properties['userAccountControl'].Value = $UserAccountControl
+      $ComputerAccount.CommitChanges()
+    } Finally {
+      $ComputerAccount.Dispose()
+    }
   }
 }
 
@@ -201,8 +293,15 @@ If ($DesiredAddresses.Count -ne 2 -or @($DesiredAddresses | Select-Object -Uniqu
 }
 ForEach ($Address In ($DesiredAddresses + $IgnoredAddresses)) { $Null = & $ConvertToIpv4UInt32 -Address $Address }
 
-$HomeDisk = & $GetHomeDiskResource -Cluster $ClusterName -VolumeId $HomeVolumeId
-$Networks = @(Get-ClusterNetwork -Cluster $ClusterName)
+# Cluster truth is local until the cluster name can resolve.
+$Clusters = @(Get-Cluster)
+If ($Clusters.Count -ne 1) { Throw ('Expected one local cluster; found {0}.' -f $Clusters.Count) }
+$Cluster = $Clusters[0]
+If ([System.String]$Cluster.Name -ine $ClusterName) {
+  Throw ('The local node belongs to cluster {0}, not {1}.' -f $Cluster.Name, $ClusterName)
+}
+$HomeDisk = & $GetHomeDiskResource -Cluster $Cluster -VolumeId $HomeVolumeId
+$Networks = @(Get-ClusterNetwork -InputObject $Cluster)
 $StaticNetworks = @{}
 ForEach ($Address In $DesiredAddresses) {
   $AddressInteger = & $ConvertToIpv4UInt32 -Address $Address
@@ -231,7 +330,7 @@ If (@(Compare-Object -ReferenceObject $EligibleNetworkNames -DifferenceObject $D
   Throw 'Static and ignored declarations must cover every client-eligible cluster network exactly.'
 }
 
-$Before = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+$Before = & $GetRoleState -Cluster $Cluster -Name $RoleName
 $Current = $Before
 $Actions = [System.Collections.Generic.List[System.String]]::new()
 $IpTransaction = $False
@@ -240,8 +339,14 @@ If ($Null -eq $Before) {
   $Actions.Add('create_role')
 
   If (-not $Ansible.CheckMode) {
-    $Null = Add-ClusterFileServerRole -Cluster $ClusterName -Name $RoleName -Storage $HomeDisk.Name -StaticAddress $DesiredAddresses -IgnoreNetwork $IgnoredNetworkNames -Wait 600
-    $Current = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+    # "add a step that makes the name adoptable when we are doing a fresh deployment."
+    # The absent role read proves this create path is fresh, so it cannot touch a live role's name.
+    $ComputerAccount = & $FindComputerAccount -SamAccountName ($RoleName + '$')
+    If ($Null -ne $ComputerAccount -and ($ComputerAccount.user_account_control -band 0x2) -eq 0) {
+      & $SetComputerAccountControl -Path $ComputerAccount.path -UserAccountControl ($ComputerAccount.user_account_control -bor 0x2)
+    }
+    $Null = Add-ClusterFileServerRole -InputObject $Cluster -Name $RoleName -Storage $HomeDisk.Name -StaticAddress $DesiredAddresses -IgnoreNetwork $IgnoredNetworkNames -Wait 600
+    $Current = & $GetRoleState -Cluster $Cluster -Name $RoleName
   }
 }
 
@@ -317,14 +422,14 @@ If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
         $Null = Remove-ClusterResource -InputObject $Extra.resource -Force
       }
     }
-    $Current = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+    $Current = & $GetRoleState -Cluster $Cluster -Name $RoleName
     $DesiredDependency = (($Current.ip_resources | Where-Object -FilterScript { $PSItem.address -in $DesiredAddresses } | Sort-Object -Property address | ForEach-Object -Process { '[{0}]' -f $PSItem.name }) -join ' or ')
     $Null = Set-ClusterResourceDependency -Resource $Current.name_resource -Dependency $DesiredDependency
     $Null = Start-ClusterGroup -Name $RoleName -Wait 600
   } ElseIf ($Actions.Contains('start_group')) {
     $Null = Start-ClusterGroup -Name $RoleName -Wait 600
   }
-  $After = & $GetRoleState -Cluster $ClusterName -Name $RoleName
+  $After = & $GetRoleState -Cluster $Cluster -Name $RoleName
 }
 
 If (-not $Ansible.CheckMode -or $Actions.Count -eq 0) {
@@ -350,12 +455,46 @@ If (-not $Ansible.CheckMode -or $Actions.Count -eq 0) {
   If ($After.dependency -ne $ExactDependency) { Throw 'Role Network Name dependency readback failed.' }
 }
 
+# The adoption region deliberately deferred disks that Available Storage's one owner could not
+# host. Once the home disk leaves, this role region can place each remaining mismatched disk.
+If ($Null -ne $After -and $After.physical_disks.Count -eq 1) {
+  $RemainingDisks = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript {
+      [System.String]$PSItem.ResourceType -eq 'Physical Disk' -and [System.String]$PSItem.OwnerGroup -ieq 'Available Storage'
+    })
+  If ($RemainingDisks.Count -gt 0) {
+    $AvailableStorageGroups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq 'Available Storage' })
+    If ($AvailableStorageGroups.Count -ne 1) { Throw 'Expected exactly one local Available Storage group.' }
+    $AvailableStorageGroup = $AvailableStorageGroups[0]
+    ForEach ($Resource In $RemainingDisks) {
+      $PossibleOwners = @((Get-ClusterOwnerNode -InputObject $Resource).OwnerNodes | ForEach-Object -Process { [System.String]$PSItem.Name })
+      If ([System.String]$AvailableStorageGroup.OwnerNode -iin $PossibleOwners) { Continue }
+      $Actions.Add(('move_available_storage:{0}' -f $Resource.Name))
+      $Actions.Add(('start_shared_disk:{0}' -f $Resource.Name))
+      If ($Ansible.CheckMode) { Continue }
+      $TargetOwner = $PossibleOwners[0]
+      $Null = Move-ClusterGroup -InputObject $AvailableStorageGroup -Node $TargetOwner -Wait 600
+      $AvailableStorageGroups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq 'Available Storage' })
+      If ($AvailableStorageGroups.Count -ne 1 -or [System.String]$AvailableStorageGroups[0].OwnerNode -ine $TargetOwner) {
+        Throw ('Available Storage failed owner readback for Physical Disk resource {0}.' -f $Resource.Name)
+      }
+      $AvailableStorageGroup = $AvailableStorageGroups[0]
+      $Null = Start-ClusterResource -InputObject $Resource -Wait 300
+      $ResourceReadback = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript {
+          [System.String]$PSItem.ResourceType -eq 'Physical Disk' -and [System.String]$PSItem.Name -ieq [System.String]$Resource.Name
+        })
+      If ($ResourceReadback.Count -ne 1 -or [System.String]$ResourceReadback[0].State -ne 'Online') {
+        Throw ('Physical Disk resource {0} failed Online readback after final placement.' -f $Resource.Name)
+      }
+    }
+  }
+}
+
 $Result = [PSCustomObject]@{
   changed    = $Actions.Count -gt 0
   check_mode = [System.Boolean]$Ansible.CheckMode
   actions    = @($Actions)
-  before     = $Before
-  after      = $After
+  before     = & $ConvertToSafeRoleState -State $Before
+  after      = & $ConvertToSafeRoleState -State $After
   msg        = $(If ($Actions.Count -eq 0) { 'Clustered file-server role already matches.' } ElseIf ($Ansible.CheckMode) { 'Check mode: clustered file-server role would be converged.' } Else { 'Clustered file-server role converged.' })
 }
 #endregion --- [ Main ] ---------------------------------------------------------------------- #

@@ -116,12 +116,12 @@ $GetNameResourceState = {
   [CmdletBinding()]
   Param (
     [Parameter(Mandatory = $True)] [System.String] $Name,
-    [Parameter(Mandatory = $True)] [System.String] $Cluster
+    [Parameter(Mandatory = $True)] [System.Object] $Cluster
   )
 
-  $Resources = @(Get-ClusterResource -Cluster $Cluster | Where-Object -FilterScript { $PSItem.Name -ieq $Name })
+  $Resources = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript { $PSItem.Name -ieq $Name })
   If ($Resources.Count -ne 1) {
-    Throw ('Cluster {0} must expose exactly one resource named {1}; found {2}.' -f $Cluster, $Name, $Resources.Count)
+    Throw ('Cluster {0} must expose exactly one resource named {1}; found {2}.' -f $Cluster.Name, $Name, $Resources.Count)
   }
   $Resource = $Resources[0]
   If ([System.String]$Resource.ResourceType -ne 'Network Name' -or [System.String]$Resource.OwnerGroup -ne 'Cluster Group') {
@@ -147,7 +147,15 @@ $GetNameResourceState = {
   }
 }
 
-$Before = & $GetNameResourceState -Name $ResourceName -Cluster $ClusterName
+# Cluster truth is local until the cluster name can resolve.
+$Clusters = @(Get-Cluster)
+If ($Clusters.Count -ne 1) { Throw ('Expected one local cluster; found {0}.' -f $Clusters.Count) }
+$Cluster = $Clusters[0]
+If ([System.String]$Cluster.Name -ine $ClusterName) {
+  Throw ('The local node belongs to cluster {0}, not {1}.' -f $Cluster.Name, $ClusterName)
+}
+
+$Before = & $GetNameResourceState -Name $ResourceName -Cluster $Cluster
 $Actions = [System.Collections.Generic.List[System.String]]::new()
 If ($Before.register_all_providers_ip -ne $RegisterAllProvidersIP) {
   $Actions.Add('set_register_all_providers_ip')
@@ -167,24 +175,25 @@ If ($Actions.Count -eq 0) {
   If ($Actions.Contains('set_host_record_ttl')) {
     $Null = $Before.resource | Set-ClusterParameter -Name 'HostRecordTTL' -Value $HostRecordTTL
   }
-  $After = & $GetNameResourceState -Name $ResourceName -Cluster $ClusterName
+  $After = & $GetNameResourceState -Name $ResourceName -Cluster $Cluster
   If ($After.register_all_providers_ip -ne $RegisterAllProvidersIP -or
     $After.host_record_ttl -ne $HostRecordTTL) {
     Throw ('Cluster Name parameter readback failed for resource {0}.' -f $ResourceName)
   }
 }
 
+# Result payloads contain primitives only; live cmdlet objects remain internal.
 $Result = [PSCustomObject]@{
   changed    = $Actions.Count -gt 0
   check_mode = [System.Boolean]$Ansible.CheckMode
   actions    = @($Actions)
   before     = [PSCustomObject]@{
-    register_all_providers_ip = $Before.register_all_providers_ip
-    host_record_ttl           = $Before.host_record_ttl
+    register_all_providers_ip = [System.Int32]$Before.register_all_providers_ip
+    host_record_ttl           = [System.Int32]$Before.host_record_ttl
   }
   after      = [PSCustomObject]@{
-    register_all_providers_ip = $After.register_all_providers_ip
-    host_record_ttl           = $After.host_record_ttl
+    register_all_providers_ip = [System.Int32]$After.register_all_providers_ip
+    host_record_ttl           = [System.Int32]$After.host_record_ttl
   }
   msg        = $(If ($Actions.Count -eq 0) { 'Cluster Name parameters already match.' } ElseIf ($Ansible.CheckMode) { 'Check mode: Cluster Name parameters would be converged.' } Else { 'Cluster Name parameters converged.' })
 }

@@ -294,7 +294,7 @@
           - corresponding_volume.volumes[0].tags.Function | default('') == disk.function
           - >-
             corresponding_instance_id.content | trim
-            in (corresponding_volume.volumes[0].attachments
+            in (corresponding_volume.volumes[0].attachment_set
                 | map(attribute='instance_id') | list)
         fail_msg: >-
           Could not resolve exactly one attached EBS volume for Function '{{ disk.function }}'
@@ -319,8 +319,8 @@
           {{ __fileserver_resolved_shared_disks__ + [
                {
                  'function': disk.function,
-                 'volume_id': corresponding_volume.volume_id,
-                 'expected_serial': corresponding_volume.volume_id | replace('-', ''),
+                 'volume_id': corresponding_volume.id,
+                 'expected_serial': corresponding_volume.id | replace('-', ''),
                  'owners': disk.owners,
                  'fileserver_home': disk.fileserver_home,
                  'preparer': disk.owners[0]
@@ -344,18 +344,34 @@
         quiet: true
 
     - name: 'MAIN | Form The File Server Cluster'
-      async: 1200
-      poll: 15
-      register: '__fileserver_cluster__'
-      ansible.windows.win_powershell:
-        depth: 4
-        error_action: 'stop'
-        parameters:
-          ClusterName: "{{ fileserver_running.cluster.name }}"
-          Node: "{{ fileserver_running.cluster.nodes }}"
-          StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
-        script: >-
-          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-FileServerCluster.ps1') }}
+      block:
+        - name: 'MAIN | Run The File Server Cluster Formation'
+          # The connection password is reused only for the delegation-capable batch logon.
+          no_log: true
+          register: '__fileserver_cluster__'
+          ansible.windows.win_powershell:
+            depth: 4
+            error_action: 'stop'
+            parameters:
+              ClusterName: "{{ fileserver_running.cluster.name }}"
+              Node: "{{ fileserver_running.cluster.nodes }}"
+              Password: "{{ ansible_password }}"
+              ReacquireTimeoutSeconds: 120
+              StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
+              TimeoutSeconds: 1200
+            script: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-FileServerCluster.ps1') }}
+      rescue:
+        - name: 'MAIN | Report That The File Server Cluster Could Not Be Formed'
+          ansible.builtin.fail:
+            msg: >-
+              {{
+                (
+                  (__fileserver_cluster__.error | default([]) | map(attribute='output') | list)
+                  + [(__fileserver_cluster__.msg | default('File server cluster formation failed.'))]
+                )
+                | join('\n')
+              }}
 
     - name: 'MAIN | Converge The Cluster Name Parameters'
       register: '__fileserver_cluster_name_parameters__'
@@ -428,7 +444,14 @@
             [string] $RoleName
           )
           $Ansible.Changed = $false
-          $Groups = @(Get-ClusterGroup -Cluster $ClusterName | Where-Object Name -EQ $RoleName)
+          # Cluster truth is local until the cluster name can resolve.
+          $Clusters = @(Get-Cluster)
+          if ($Clusters.Count -ne 1) { throw "Expected one local cluster; found $($Clusters.Count)." }
+          $Cluster = $Clusters[0]
+          if ([string]$Cluster.Name -ine $ClusterName) {
+            throw "The local node belongs to cluster $($Cluster.Name), not $ClusterName."
+          }
+          $Groups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object Name -EQ $RoleName)
           if ($Groups.Count -ne 1 -or [string]$Groups[0].State -ne 'Online') {
             throw "Clustered file-server role $RoleName must exist exactly once and be Online."
           }
@@ -531,20 +554,26 @@
                 if ($Values.Count -ne 1) { throw "Resource $($Resource.Name) lacks one $Name." }
                 $Values[0].Value
               }
-              $Nodes = @(Get-ClusterNode -Cluster $ClusterName | ForEach-Object {
+              $Clusters = @(Get-Cluster)
+              if ($Clusters.Count -ne 1) { throw "Expected one local cluster; found $($Clusters.Count)." }
+              $Cluster = $Clusters[0]
+              if ([string]$Cluster.Name -ine $ClusterName) {
+                throw "The local node belongs to cluster $($Cluster.Name), not $ClusterName."
+              }
+              $Nodes = @(Get-ClusterNode -InputObject $Cluster | ForEach-Object {
                   [PSCustomObject]@{ name = ([string]$_.Name).ToLowerInvariant(); state = [string]$_.State }
                 })
-              $AllResources = @(Get-ClusterResource -Cluster $ClusterName)
+              $AllResources = @(Get-ClusterResource -InputObject $Cluster)
               $NameResources = @($AllResources | Where-Object Name -EQ $ClusterNameResourceName)
               if ($NameResources.Count -ne 1) { throw 'Cluster Name resource readback is ambiguous.' }
-              $Groups = @(Get-ClusterGroup -Cluster $ClusterName)
+              $Groups = @(Get-ClusterGroup -InputObject $Cluster)
               $RoleGroups = @($Groups | Where-Object Name -EQ $RoleName)
               if ($RoleGroups.Count -ne 1) { throw "Role $RoleName readback is ambiguous." }
               $Role = $RoleGroups[0]
               $RoleResources = @($AllResources | Where-Object { [string]$_.OwnerGroup -eq $RoleName })
               $RoleNameResources = @($RoleResources | Where-Object ResourceType -EQ 'Network Name')
               if ($RoleNameResources.Count -ne 1) { throw 'Role Network Name readback is ambiguous.' }
-              $ClusterNetworks = @(Get-ClusterNetwork -Cluster $ClusterName)
+              $ClusterNetworks = @(Get-ClusterNetwork -InputObject $Cluster)
               $RoleIps = @($RoleResources | Where-Object ResourceType -EQ 'IP Address' | ForEach-Object {
                   $NetworkName = [string](Read-Parameter $_ 'Network')
                   $NetworkMatches = @($ClusterNetworks | Where-Object Name -EQ $NetworkName)
@@ -571,7 +600,7 @@
                 register_all_providers_ip = [int](Read-Parameter $NameResources[0] 'RegisterAllProvidersIP')
                 host_record_ttl = [int](Read-Parameter $NameResources[0] 'HostRecordTTL')
                 status_dns = [int](Read-Parameter $NameResources[0] 'StatusDNS')
-                quorum_type = [string](Get-ClusterQuorum -Cluster $ClusterName).QuorumType
+                quorum_type = [string](Get-ClusterQuorum -InputObject $Cluster).QuorumType
                 role_count = $RoleGroups.Count
                 role = [PSCustomObject]@{
                   name = [string]$Role.Name
@@ -619,6 +648,12 @@
                 [System.Collections.IDictionary] $Disk
               )
               $Ansible.Changed = $false
+              $Clusters = @(Get-Cluster)
+              if ($Clusters.Count -ne 1) { throw "Expected one local cluster; found $($Clusters.Count)." }
+              $Cluster = $Clusters[0]
+              if ([string]$Cluster.Name -ine $ClusterName) {
+                throw "The local node belongs to cluster $($Cluster.Name), not $ClusterName."
+              }
               $Token = ([string]$Disk.VolumeId).ToLowerInvariant().Replace('-', '')
               $LocalDisks = @(Get-Disk)
               $LocalMatches = @($LocalDisks | Where-Object {
@@ -626,7 +661,7 @@
                 })
               if ($LocalMatches.Count -ne 1) { throw "Volume $($Disk.VolumeId) local identity is ambiguous." }
               $Matches = @()
-              foreach ($Resource in @(Get-ClusterResource -Cluster $ClusterName | Where-Object ResourceType -EQ 'Physical Disk')) {
+              foreach ($Resource in @(Get-ClusterResource -InputObject $Cluster | Where-Object ResourceType -EQ 'Physical Disk')) {
                 $Parameters = @(Get-ClusterParameter -InputObject $Resource -Name 'DiskIdGuid')
                 if ($Parameters.Count -ne 1) { throw "Resource $($Resource.Name) lacks one DiskIdGuid." }
                 $Guid = ([string]$Parameters[0].Value).Trim('{}')

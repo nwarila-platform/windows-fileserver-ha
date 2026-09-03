@@ -233,6 +233,51 @@ $GetShareState = {
   [PSCustomObject]@{ share = $Shares[0]; access = $Access; canonical_access = @($Canonical); desired_access = @($DesiredAccess.canonical | Sort-Object) }
 }
 
+# Result payloads contain primitives only; live cmdlet objects remain internal.
+$ConvertToSafeNtfsState = {
+  Param ([System.Object]$State)
+  [PSCustomObject]@{
+    protected       = [System.Boolean]$State.protected
+    inherited_count = [System.Int32]$State.inherited_count
+    desired         = @($State.desired | ForEach-Object -Process { [System.String]$PSItem })
+    current         = @($State.current | ForEach-Object -Process { [System.String]$PSItem })
+    exact           = [System.Boolean]$State.exact
+  }
+}
+
+$ConvertToSafeShareState = {
+  Param ([System.Object]$State)
+  $SafeShare = $Null
+  If ($Null -ne $State.share) {
+    $SafeShare = [PSCustomObject]@{
+      name                    = [System.String]$State.share.Name
+      scope_name              = [System.String]$State.share.ScopeName
+      path                    = [System.String]$State.share.Path
+      description             = [System.String]$State.share.Description
+      continuously_available  = [System.Boolean]$State.share.ContinuouslyAvailable
+      folder_enumeration_mode = [System.String]$State.share.FolderEnumerationMode
+      caching_mode            = [System.String]$State.share.CachingMode
+      encrypt_data            = [System.Boolean]$State.share.EncryptData
+    }
+  }
+  $DesiredAccess = @()
+  If ($State.PSObject.Properties.Name -contains 'desired_access') {
+    $DesiredAccess = @($State.desired_access | ForEach-Object -Process { [System.String]$PSItem })
+  }
+  [PSCustomObject]@{
+    share            = $SafeShare
+    access           = @($State.access | ForEach-Object -Process {
+        [PSCustomObject]@{
+          account_name        = [System.String]$PSItem.AccountName
+          access_control_type = [System.String]$PSItem.AccessControlType
+          access_right        = [System.String]$PSItem.AccessRight
+        }
+      })
+    canonical_access = @($State.canonical_access | ForEach-Object -Process { [System.String]$PSItem })
+    desired_access   = $DesiredAccess
+  }
+}
+
 $DesiredNtfs = @(& $ConvertToDesiredNtfsAccess -Declaration $NtfsAccess)
 $DesiredShare = @(& $ConvertToDesiredShareAccess -Declaration $ShareAccess)
 $BeforeNtfs = & $GetNtfsState -LiteralPath $Path -Desired $DesiredNtfs
@@ -328,12 +373,26 @@ If ($Mode -eq 'DirectoryAcl') {
   $After = [PSCustomObject]@{ ntfs = $AfterNtfs; share = $AfterShare }
 }
 
+If ($Mode -eq 'DirectoryAcl') {
+  $ResultBefore = & $ConvertToSafeNtfsState -State $Before
+  $ResultAfter = & $ConvertToSafeNtfsState -State $After
+} Else {
+  $ResultBefore = [PSCustomObject]@{
+    ntfs  = & $ConvertToSafeNtfsState -State $Before.ntfs
+    share = & $ConvertToSafeShareState -State $Before.share
+  }
+  $ResultAfter = [PSCustomObject]@{
+    ntfs  = & $ConvertToSafeNtfsState -State $After.ntfs
+    share = & $ConvertToSafeShareState -State $After.share
+  }
+}
+
 $Result = [PSCustomObject]@{
   changed    = $Actions.Count -gt 0
   check_mode = [System.Boolean]$Ansible.CheckMode
   actions    = @($Actions)
-  before     = $Before
-  after      = $After
+  before     = $ResultBefore
+  after      = $ResultAfter
   msg        = $(If ($Actions.Count -eq 0) { '{0} already matches.' -f $Mode } ElseIf ($Ansible.CheckMode) { 'Check mode: {0} would be converged.' -f $Mode } Else { '{0} converged.' -f $Mode })
 }
 #endregion --- [ Main ] ---------------------------------------------------------------------- #

@@ -11,18 +11,58 @@ BeforeAll {
   $script:Addresses = @('10.0.1.12', '10.0.33.12')
   $script:Ignored = @('10.0.64.0', '10.0.96.0')
 
+  $global:SetClusteredFileServerFindComputerAccount = {
+    Param ([System.String]$SamAccountName)
+    $global:FsHaRoleComputerAccountReads += $SamAccountName
+    If (-not $global:FsHaRoleComputerAccountPresent) { Return $Null }
+    [PSCustomObject]@{
+      path                 = 'LDAP://CN=TCNAW-HAFS01,OU=Cluster'
+      user_account_control = $global:FsHaRoleComputerAccountControl
+    }
+  }
+  $global:SetClusteredFileServerSetComputerAccountControl = {
+    Param ([System.String]$Path, [System.Int32]$UserAccountControl)
+    $global:FsHaRoleComputerAccountWrites += [PSCustomObject]@{ Path = $Path; UserAccountControl = $UserAccountControl }
+    $global:FsHaRoleComputerAccountControl = $UserAccountControl
+  }
+
   Function New-AnsibleContext {
     Param ([Switch]$CheckMode)
     $global:Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $CheckMode.IsPresent; Failed = $False; Result = $Null }
     $global:Ansible
   }
   Function Remove-AnsibleContext { Remove-Variable -Name Ansible -Scope Global -Force -ErrorAction SilentlyContinue }
+  Function Assert-ResultPrimitiveLeaves {
+    Param ([AllowNull()] [System.Object]$Value, [System.String]$Path = '$')
+    If ($Null -eq $Value -or $Value -is [System.String] -or $Value -is [System.Int32] -or $Value -is [System.Boolean]) { Return }
+    If ($Value -is [PSCustomObject]) {
+      ForEach ($Property In $Value.PSObject.Properties) {
+        Assert-ResultPrimitiveLeaves -Value $Property.Value -Path ('{0}.{1}' -f $Path, $Property.Name)
+      }
+      Return
+    }
+    If ($Value -is [System.Array]) {
+      For ($Index = 0; $Index -lt $Value.Count; $Index++) {
+        Assert-ResultPrimitiveLeaves -Value $Value[$Index] -Path ('{0}[{1}]' -f $Path, $Index)
+      }
+      Return
+    }
+    Throw ('Result leaf {0} has forbidden type {1}.' -f $Path, $Value.GetType().FullName)
+  }
   Function New-Resource {
     Param ([System.String]$Name, [System.String]$Type, [System.String]$Group, [System.String]$State = 'Online', [System.Collections.IDictionary]$Parameters = @{})
     [PSCustomObject]@{ Name = $Name; ResourceType = $Type; OwnerGroup = $Group; State = $State; Parameters = $Parameters }
   }
+  Function Get-Cluster {
+    $global:FsHaRoleClusterReads++
+    [PSCustomObject]@{ Name = $global:FsHaRoleClusterName }
+  }
   Function Get-Disk { @($global:FsHaRoleLocalDisks) }
-  Function Get-ClusterResource { Param ([System.String]$Cluster) @($global:FsHaRoleResources) }
+  Function Get-ClusterResource {
+    Param ([System.Object]$InputObject)
+    $global:FsHaRoleClusterInputs += [System.String]$InputObject.Name
+    @($global:FsHaRoleResources)
+  }
   Function Get-ClusterParameter {
     Param ([Parameter(ValueFromPipeline = $True)] [System.Object]$InputObject, [System.String]$Name)
     If (-not $InputObject.Parameters.Contains($Name)) { Return @() }
@@ -31,27 +71,37 @@ BeforeAll {
   Function Get-ClusterOwnerNode {
     Param ([Parameter(ValueFromPipeline = $True)] [System.Object]$InputObject, [System.Object]$Group)
     If ($PSBoundParameters.ContainsKey('Group')) {
-      @($global:FsHaRoleOwners | ForEach-Object -Process { [PSCustomObject]@{ Name = $PSItem } })
+      $OwnerNames = $global:FsHaRoleOwners
     } Else {
-      @($global:FsHaHomeOwners | ForEach-Object -Process { [PSCustomObject]@{ Name = $PSItem } })
+      $OwnerNames = $global:FsHaResourceOwners[$InputObject.Name]
+    }
+    [PSCustomObject]@{
+      OwnerNodes = @($OwnerNames | ForEach-Object -Process { [PSCustomObject]@{ Name = $PSItem } })
     }
   }
   Function Get-ClusterGroup {
-    Param ([System.String]$Cluster)
-    If (-not $global:FsHaRolePresent) { Return @() }
-    For ($Index = 0; $Index -lt $global:FsHaRoleGroupCount; $Index++) { $global:FsHaRoleGroup }
+    Param ([System.Object]$InputObject)
+    $global:FsHaRoleClusterInputs += [System.String]$InputObject.Name
+    $global:FsHaAvailableStorageGroup
+    If ($global:FsHaRolePresent) {
+      For ($Index = 0; $Index -lt $global:FsHaRoleGroupCount; $Index++) { $global:FsHaRoleGroup }
+    }
   }
-  Function Get-ClusterNetwork { Param ([System.String]$Cluster) @($global:FsHaRoleNetworks) }
+  Function Get-ClusterNetwork {
+    Param ([System.Object]$InputObject)
+    $global:FsHaRoleClusterInputs += [System.String]$InputObject.Name
+    @($global:FsHaRoleNetworks)
+  }
   Function Get-ClusterResourceDependency {
     Param ([System.Object]$Resource)
     [PSCustomObject]@{ DependencyExpression = $global:FsHaRoleDependency }
   }
   Function Add-ClusterFileServerRole {
     Param (
-      [System.String]$Cluster, [System.String]$Name, [System.String]$Storage,
+      [System.Object]$InputObject, [System.String]$Name, [System.String]$Storage,
       [System.String[]]$StaticAddress, [System.String[]]$IgnoreNetwork, [System.Int32]$Wait
     )
-    $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'Create'; Cluster = $Cluster; Name = $Name; Storage = $Storage; StaticAddress = $StaticAddress; IgnoreNetwork = $IgnoreNetwork; Wait = $Wait }
+    $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'Create'; Cluster = $InputObject.Name; Name = $Name; Storage = $Storage; StaticAddress = $StaticAddress; IgnoreNetwork = $IgnoreNetwork; Wait = $Wait }
     If ($global:FsHaRoleFrozen) { Return }
     $global:FsHaRolePresent = $True
     $global:FsHaRoleGroup.State = 'Online'
@@ -72,6 +122,11 @@ BeforeAll {
     Param ([System.Object]$InputObject, [System.String]$Group)
     $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'Move'; Name = $InputObject.Name; Group = $Group }
     If (-not $global:FsHaRoleFrozen) { $InputObject.OwnerGroup = $Group }
+  }
+  Function Move-ClusterGroup {
+    Param ([System.Object]$InputObject, [System.String]$Node, [System.Int32]$Wait)
+    $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'MoveAvailable'; InputObject = $InputObject; Node = $Node; Wait = $Wait }
+    If (-not $global:FsHaRoleFrozen) { $InputObject.OwnerNode = $Node }
   }
   Function Set-ClusterOwnerNode {
     Param ([System.Object]$Group, [System.String[]]$Owners)
@@ -100,6 +155,11 @@ BeforeAll {
     $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'StopIp'; Name = $InputObject.Name; Wait = $Wait }
     If (-not $global:FsHaRoleFrozen) { $InputObject.State = 'Offline' }
   }
+  Function Start-ClusterResource {
+    Param ([System.Object]$InputObject, [System.Int32]$Wait)
+    $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'StartDisk'; Name = $InputObject.Name; Wait = $Wait }
+    If (-not $global:FsHaRoleFrozen) { $InputObject.State = 'Online' }
+  }
   Function Remove-ClusterResource {
     Param ([System.Object]$InputObject, [Switch]$Force)
     $global:FsHaRoleWrites += [PSCustomObject]@{ Command = 'RemoveIp'; Name = $InputObject.Name; Force = $Force.IsPresent }
@@ -122,11 +182,14 @@ BeforeAll {
 }
 
 AfterAll {
-  Remove-Variable -Name 'FsHaRoleLocalDisks', 'FsHaRoleResources', 'FsHaHomeOwners', 'FsHaRolePresent', 'FsHaRoleGroupCount', 'FsHaRoleGroup', 'FsHaRoleOwners', 'FsHaRoleNetworks', 'FsHaRoleDependency', 'FsHaRoleWrites', 'FsHaRoleFrozen' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetClusteredFileServerFindComputerAccount', 'SetClusteredFileServerSetComputerAccountControl', 'FsHaRoleClusterName', 'FsHaRoleClusterReads', 'FsHaRoleClusterInputs', 'FsHaRoleComputerAccountPresent', 'FsHaRoleComputerAccountControl', 'FsHaRoleComputerAccountReads', 'FsHaRoleComputerAccountWrites', 'FsHaRoleLocalDisks', 'FsHaRoleResources', 'FsHaResourceOwners', 'FsHaAvailableStorageGroup', 'FsHaRolePresent', 'FsHaRoleGroupCount', 'FsHaRoleGroup', 'FsHaRoleOwners', 'FsHaRoleNetworks', 'FsHaRoleDependency', 'FsHaRoleWrites', 'FsHaRoleFrozen' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-ClusteredFileServer' {
   BeforeEach {
+    $global:FsHaRoleClusterName = 'TCNAW-FSCL01'
+    $global:FsHaRoleClusterReads = 0
+    $global:FsHaRoleClusterInputs = @()
     $Guid = '11111111-1111-1111-1111-111111111111'
     $global:FsHaRoleLocalDisks = @([PSCustomObject]@{ Guid = $Guid; UniqueId = 'AWS_vol0abc123' })
     $HomeResource = New-Resource -Name 'Cluster Disk 9' -Type 'Physical Disk' -Group 'TCNAW-HAFS01' -Parameters @{ DiskIdGuid = $Guid }
@@ -134,7 +197,8 @@ Describe 'Set-ClusteredFileServer' {
     $Ip1 = New-Resource -Name 'IP Address 10.0.1.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
     $Ip2 = New-Resource -Name 'IP Address 10.0.33.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.33.12'; Network = 'Cluster Network 2'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
     $global:FsHaRoleResources = @($HomeResource, $Name, $Ip1, $Ip2)
-    $global:FsHaHomeOwners = @($script:Owners)
+    $global:FsHaResourceOwners = @{ 'Cluster Disk 9' = @($script:Owners) }
+    $global:FsHaAvailableStorageGroup = [PSCustomObject]@{ Name = 'Available Storage'; OwnerNode = 'tcnaw-hafs01a' }
     $global:FsHaRolePresent = $True
     $global:FsHaRoleGroupCount = 1
     $global:FsHaRoleGroup = [PSCustomObject]@{ Name = 'TCNAW-HAFS01'; State = 'Online'; OwnerNode = 'tcnaw-hafs01a' }
@@ -148,6 +212,10 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleDependency = '[IP Address 10.0.1.12] or [IP Address 10.0.33.12]'
     $global:FsHaRoleWrites = @()
     $global:FsHaRoleFrozen = $False
+    $global:FsHaRoleComputerAccountPresent = $True
+    $global:FsHaRoleComputerAccountControl = 4096
+    $global:FsHaRoleComputerAccountReads = @()
+    $global:FsHaRoleComputerAccountWrites = @()
   }
   AfterEach { Remove-AnsibleContext }
 
@@ -155,6 +223,38 @@ Describe 'Set-ClusteredFileServer' {
     $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | ConvertFrom-Json
     $Result.changed | Should -BeFalse
     $global:FsHaRoleWrites | Should -HaveCount 0
+    $global:FsHaRoleComputerAccountReads | Should -HaveCount 0
+    $global:FsHaRoleClusterReads | Should -Be 1
+    @($global:FsHaRoleClusterInputs | Where-Object { $PSItem -ne 'TCNAW-FSCL01' }) | Should -HaveCount 0
+  }
+
+  It 'exports only serialization-safe primitive result leaves' {
+    $RawGroup = [System.IO.MemoryStream]::new()
+    Try {
+      $RawGroup | Add-Member -NotePropertyName Name -NotePropertyValue 'TCNAW-HAFS01'
+      $RawGroup | Add-Member -NotePropertyName State -NotePropertyValue 'Online'
+      $RawGroup | Add-Member -NotePropertyName OwnerNode -NotePropertyValue 'tcnaw-hafs01a'
+      $global:FsHaRoleGroup = $RawGroup
+      $Context = New-AnsibleContext
+
+      $Output = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored
+
+      $Output | Should -BeNullOrEmpty
+      { $Context.Result | ConvertTo-Json -Depth 6 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop | Out-Null } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $Context.Result } | Should -Not -Throw
+      { Assert-ResultPrimitiveLeaves -Value $RawGroup } | Should -Throw '*System.IO.MemoryStream*'
+      $Context.Result.after.name | Should -Be 'TCNAW-HAFS01'
+    } Finally {
+      $RawGroup.Dispose()
+    }
+  }
+
+  It 'rejects a differently named local cluster before role reads or writes' {
+    $global:FsHaRoleClusterName = 'OTHER'
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored } | Should -Throw '*belongs to cluster OTHER*'
+    $global:FsHaRoleWrites | Should -HaveCount 0
+    $global:FsHaRoleClusterInputs | Should -HaveCount 0
+    $global:FsHaRoleComputerAccountReads | Should -HaveCount 0
   }
 
   It 'creates an absent role then converges the residual preferred-owner contract' {
@@ -170,10 +270,25 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleWrites[0].Wait | Should -Be 600
     $global:FsHaRoleWrites[1].Group | Should -Be 'TCNAW-HAFS01'
     $global:FsHaRoleWrites[1].Owners | Should -Be $script:Owners
+    $global:FsHaRoleComputerAccountReads | Should -Be @('TCNAW-HAFS01$')
+    $global:FsHaRoleComputerAccountWrites.UserAccountControl | Should -Be @(4098)
 
     $global:FsHaRoleWrites = @()
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
     $global:FsHaRoleWrites | Should -HaveCount 0
+    $global:FsHaRoleComputerAccountReads | Should -HaveCount 1
+  }
+
+  It 'leaves an already disabled prestaged VCO unchanged on the create path' {
+    $global:FsHaRolePresent = $False
+    $global:FsHaRoleResources = @($global:FsHaRoleResources[0])
+    $global:FsHaRoleResources[0].OwnerGroup = 'Available Storage'
+    $global:FsHaRoleComputerAccountControl = 4098
+
+    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
+
+    $global:FsHaRoleComputerAccountReads | Should -Be @('TCNAW-HAFS01$')
+    $global:FsHaRoleComputerAccountWrites | Should -HaveCount 0
   }
 
   It 'corrects preferred-owner drift without bouncing the group' {
@@ -186,6 +301,29 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleResources[0].OwnerGroup = 'Available Storage'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
     $global:FsHaRoleWrites.Command | Should -Be @('Move')
+  }
+
+  It 'moves and starts only a remaining disk mismatched with the Available Storage owner' {
+    $Placeable = New-Resource -Name 'Cluster Disk 10' -Type 'Physical Disk' -Group 'Available Storage' -Parameters @{ DiskIdGuid = '22222222-2222-2222-2222-222222222222' }
+    $Deferred = New-Resource -Name 'Cluster Disk 11' -Type 'Physical Disk' -Group 'Available Storage' -State 'Offline' -Parameters @{ DiskIdGuid = '33333333-3333-3333-3333-333333333333' }
+    $global:FsHaRoleResources += $Placeable, $Deferred
+    $global:FsHaResourceOwners[$Placeable.Name] = @('tcnaw-hafs01a', 'tcnaw-hafs01b')
+    $global:FsHaResourceOwners[$Deferred.Name] = @('tcnaw-hafs01b', 'tcnaw-hafs02b')
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | ConvertFrom-Json
+
+    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk')
+    $global:FsHaRoleWrites[0].InputObject | Should -Be $global:FsHaAvailableStorageGroup
+    $global:FsHaRoleWrites[0].Node | Should -Be 'tcnaw-hafs01b'
+    $global:FsHaRoleWrites[0].Wait | Should -Be 600
+    $global:FsHaRoleWrites[1].Name | Should -Be $Deferred.Name
+    $global:FsHaRoleWrites[1].Wait | Should -Be 300
+    $Result.actions | Should -Be @('move_available_storage:Cluster Disk 11', 'start_shared_disk:Cluster Disk 11')
+
+    $global:FsHaRoleWrites = @()
+    $Second = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | ConvertFrom-Json
+    $Second.changed | Should -BeFalse
+    $global:FsHaRoleWrites | Should -HaveCount 0
   }
 
   It 'removes an arbitrary extra IP in one stop-start transaction' {
@@ -249,6 +387,7 @@ Describe 'Set-ClusteredFileServer' {
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored | Out-Null
     $Context.Changed | Should -BeTrue
     $global:FsHaRoleWrites | Should -HaveCount 0
+    $global:FsHaRoleComputerAccountReads | Should -HaveCount 0
   }
 
   It 'predicts a partial existing role in check mode without cluster writes' {

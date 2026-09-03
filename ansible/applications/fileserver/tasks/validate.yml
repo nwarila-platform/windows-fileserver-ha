@@ -94,8 +94,8 @@
       - fileserver_running.cluster.file_server.static_addresses | unique | length == 2
       - fileserver_running.cluster.file_server.ignored_network_addresses | length == 2
       - fileserver_running.cluster.file_server.ignored_network_addresses | unique | length == 2
-      - __fileserver_all_addresses | reject('match', __fileserver_ipv4_pattern__) | list | length == 0
-      - __fileserver_all_addresses | unique | length == 8
+      - __fileserver_all_addresses__ | reject('match', __fileserver_ipv4_pattern__) | list | length == 0
+      - __fileserver_all_addresses__ | unique | length == 8
     fail_msg: >-
       Refusing to run: fileserver.cluster static_addresses, file_server.static_addresses,
       and file_server.ignored_network_addresses must be unique IPv4 strings with lengths
