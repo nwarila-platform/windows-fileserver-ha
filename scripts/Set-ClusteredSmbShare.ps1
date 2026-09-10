@@ -122,6 +122,12 @@ $ResolveAccountSid = {
   }
 }
 
+$SynchronizeRight = [System.Int32][System.Security.AccessControl.FileSystemRights]::Synchronize
+$NormalizeNtfsRights = {
+  Param ([System.Int32]$RightsValue)
+  [System.Int32]($RightsValue -bor $SynchronizeRight)
+}
+
 $ConvertToDesiredNtfsAccess = {
   Param ([System.Collections.IDictionary[]]$Declaration)
   $ExpectedKeys = @('access_control_type', 'inheritance_flags', 'principal', 'propagation_flags', 'rights')
@@ -139,7 +145,7 @@ $ConvertToDesiredNtfsAccess = {
       sid               = $Sid
       access_type       = 'Allow'
       rights            = [System.String]$Entry.rights
-      rights_value      = [System.Int32]([System.Security.AccessControl.FileSystemRights]$Entry.rights)
+      rights_value      = & $NormalizeNtfsRights -RightsValue ([System.Int32]([System.Security.AccessControl.FileSystemRights]$Entry.rights))
       inheritance       = 'ContainerInherit,ObjectInherit'
       inheritance_value = [System.Int32]([System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit')
       propagation       = 'None'
@@ -180,6 +186,29 @@ $GetIdentitySid = {
   $Identity.Translate([System.Security.Principal.SecurityIdentifier]).Value
 }
 
+$GetSetDisagreement = {
+  Param ([System.String]$SetName, [System.String[]]$Desired, [System.String[]]$Current)
+  $Difference = @(Compare-Object -ReferenceObject $Desired -DifferenceObject $Current)
+  If ($Difference.Count -eq 0) { Return }
+  $Present = @($Difference | Where-Object -FilterScript { $PSItem.SideIndicator -eq '=>' } | ForEach-Object -Process { [System.String]$PSItem.InputObject })
+  $Missing = @($Difference | Where-Object -FilterScript { $PSItem.SideIndicator -eq '<=' } | ForEach-Object -Process { [System.String]$PSItem.InputObject })
+  $PresentText = $(If ($Present.Count -eq 0) { 'none' } Else { $Present -join ', ' })
+  $MissingText = $(If ($Missing.Count -eq 0) { 'none' } Else { $Missing -join ', ' })
+  '{0} set mismatch: entries present but not desired: [{1}]; entries desired but not present: [{2}]' -f $SetName, $PresentText, $MissingText
+}
+
+$GetNtfsDisagreements = {
+  Param ([System.Object]$State)
+  $Disagreements = [System.Collections.Generic.List[System.String]]::new()
+  If (-not [System.Boolean]$State.protected) { $Disagreements.Add('DACL protection expected True but was False') }
+  If ([System.Int32]$State.inherited_count -ne 0) {
+    $Disagreements.Add(('inherited ACE count expected 0 but was {0}' -f [System.Int32]$State.inherited_count))
+  }
+  $SetDisagreement = & $GetSetDisagreement -SetName 'DACL ACE' -Desired $State.desired -Current $State.current
+  If ($Null -ne $SetDisagreement) { $Disagreements.Add($SetDisagreement) }
+  $Disagreements
+}
+
 $GetNtfsState = {
   Param ([System.String]$LiteralPath, [System.Object[]]$Desired)
   If (-not (Test-Path -LiteralPath $LiteralPath -PathType Container)) { Throw ('Path {0} does not exist as a directory.' -f $LiteralPath) }
@@ -191,7 +220,7 @@ $GetNtfsState = {
       $InheritedCount++
     } Else {
       $Sid = & $GetIdentitySid -Identity $Rule.IdentityReference
-      $RightsValue = [System.Int32]$Rule.FileSystemRights
+      $RightsValue = & $NormalizeNtfsRights -RightsValue ([System.Int32]$Rule.FileSystemRights)
       $DesiredMatch = @($Desired | Where-Object -FilterScript {
           $PSItem.sid -eq $Sid -and $PSItem.access_type -eq [System.String]$Rule.AccessControlType -and
           $PSItem.rights_value -eq $RightsValue -and $PSItem.inheritance_value -eq [System.Int32]$Rule.InheritanceFlags -and
@@ -305,7 +334,10 @@ If ($Mode -eq 'DirectoryAcl') {
     }
     Set-Acl -LiteralPath $Path -AclObject $Acl
     $AfterNtfs = & $GetNtfsState -LiteralPath $Path -Desired $DesiredNtfs
-    If (-not $AfterNtfs.exact) { Throw ('Directory DACL on {0} failed exact readback.' -f $Path) }
+    If (-not $AfterNtfs.exact) {
+      $Disagreements = @(& $GetNtfsDisagreements -State $AfterNtfs)
+      Throw ('Directory DACL on {0} failed exact readback: {1}.' -f $Path, ($Disagreements -join '; '))
+    }
   }
   $Before = $BeforeNtfs
   $After = $AfterNtfs
@@ -360,13 +392,26 @@ If ($Mode -eq 'DirectoryAcl') {
     $AfterShare = & $GetShareState -ShareName $Name -ShareScope $ScopeName -DesiredAccess $DesiredShare
     $AfterNtfs = & $GetNtfsState -LiteralPath $Path -Desired $DesiredNtfs
     $Share = $AfterShare.share
-    If ($Null -eq $Share -or [System.String]$Share.Name -ine $Name -or [System.String]$Share.ScopeName -ine $ScopeName -or
-      [System.String]$Share.Path -ine $Path -or [System.String]$Share.Description -cne $Description -or
-      [System.Boolean]$Share.ContinuouslyAvailable -ne $ContinuouslyAvailable -or
-      [System.String]$Share.FolderEnumerationMode -ne $FolderEnumerationMode -or [System.String]$Share.CachingMode -ne $CachingMode -or
-      [System.Boolean]$Share.EncryptData -ne $EncryptData -or -not $AfterNtfs.exact -or
-      @(Compare-Object -ReferenceObject $DesiredAccessCanonical -DifferenceObject $AfterShare.canonical_access).Count -gt 0) {
-      Throw ('Clustered SMB share {0} failed exact readback.' -f $Name)
+    $Disagreements = [System.Collections.Generic.List[System.String]]::new()
+    If ($Null -eq $Share) {
+      $Disagreements.Add('share object expected present but was absent')
+    } Else {
+      If ([System.String]$Share.Name -ine $Name) { $Disagreements.Add(('name expected "{0}" but was "{1}"' -f $Name, [System.String]$Share.Name)) }
+      If ([System.String]$Share.ScopeName -ine $ScopeName) { $Disagreements.Add(('scope name expected "{0}" but was "{1}"' -f $ScopeName, [System.String]$Share.ScopeName)) }
+      If ([System.String]$Share.Path -ine $Path) { $Disagreements.Add(('path expected "{0}" but was "{1}"' -f $Path, [System.String]$Share.Path)) }
+      If ([System.String]$Share.Description -cne $Description) { $Disagreements.Add(('description expected "{0}" but was "{1}"' -f $Description, [System.String]$Share.Description)) }
+      If ([System.Boolean]$Share.ContinuouslyAvailable -ne $ContinuouslyAvailable) { $Disagreements.Add(('continuously available expected {0} but was {1}' -f $ContinuouslyAvailable, [System.Boolean]$Share.ContinuouslyAvailable)) }
+      If ([System.String]$Share.FolderEnumerationMode -ne $FolderEnumerationMode) { $Disagreements.Add(('folder enumeration mode expected "{0}" but was "{1}"' -f $FolderEnumerationMode, [System.String]$Share.FolderEnumerationMode)) }
+      If ([System.String]$Share.CachingMode -ne $CachingMode) { $Disagreements.Add(('caching mode expected "{0}" but was "{1}"' -f $CachingMode, [System.String]$Share.CachingMode)) }
+      If ([System.Boolean]$Share.EncryptData -ne $EncryptData) { $Disagreements.Add(('encrypt data expected {0} but was {1}' -f $EncryptData, [System.Boolean]$Share.EncryptData)) }
+    }
+    ForEach ($Disagreement In @(& $GetNtfsDisagreements -State $AfterNtfs)) {
+      $Disagreements.Add(('directory {0}' -f $Disagreement))
+    }
+    $AccessDisagreement = & $GetSetDisagreement -SetName 'share access' -Desired $DesiredAccessCanonical -Current $AfterShare.canonical_access
+    If ($Null -ne $AccessDisagreement) { $Disagreements.Add($AccessDisagreement) }
+    If ($Disagreements.Count -gt 0) {
+      Throw ('Clustered SMB share {0} failed exact readback: {1}.' -f $Name, ($Disagreements -join '; '))
     }
   }
   $Before = [PSCustomObject]@{ ntfs = $BeforeNtfs; share = $BeforeShare }
