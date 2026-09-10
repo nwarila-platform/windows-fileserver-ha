@@ -13,20 +13,6 @@ BeforeAll {
   $script:OriginalTemp = $env:TEMP
   If ([System.String]::IsNullOrWhiteSpace($env:TEMP)) { $env:TEMP = [System.IO.Path]::GetTempPath() }
 
-  $global:SetFileServerClusterFindComputerAccount = {
-    Param ([System.String]$SamAccountName)
-    $global:FsHaComputerAccountReads += $SamAccountName
-    If (-not $global:FsHaComputerAccountPresent) { Return $Null }
-    [PSCustomObject]@{
-      path                 = 'LDAP://CN=TCNAW-FSCL01,OU=Cluster'
-      user_account_control = $global:FsHaComputerAccountControl
-    }
-  }
-  $global:SetFileServerClusterSetComputerAccountControl = {
-    Param ([System.String]$Path, [System.Int32]$UserAccountControl)
-    $global:FsHaComputerAccountWrites += [PSCustomObject]@{ Path = $Path; UserAccountControl = $UserAccountControl }
-    $global:FsHaComputerAccountControl = $UserAccountControl
-  }
   $global:SetFileServerClusterGetCurrentIdentityName = { 'TCN\svc-fscluster-mgr' }
   $global:SetFileServerClusterReadTranscriptTail = { 'terminating mutation proof' }
   $script:GetLocalMembershipStatus = { $global:FsHaLocalMembershipStatus }
@@ -203,7 +189,7 @@ BeforeAll {
 
 AfterAll {
   $env:TEMP = $script:OriginalTemp
-  Remove-Variable -Name 'SetFileServerClusterFindComputerAccount', 'SetFileServerClusterSetComputerAccountControl', 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaComputerAccountPresent', 'FsHaComputerAccountControl', 'FsHaComputerAccountReads', 'FsHaComputerAccountWrites', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskResult', 'FsHaTaskUnregistrations' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskResult', 'FsHaTaskUnregistrations' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-FileServerCluster' {
@@ -225,10 +211,6 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterFrozen = $False
     $global:FsHaMutationWritesError = $False
     $global:FsHaEligibleDiskReads = 0
-    $global:FsHaComputerAccountPresent = $True
-    $global:FsHaComputerAccountControl = 4096
-    $global:FsHaComputerAccountReads = @()
-    $global:FsHaComputerAccountWrites = @()
     $global:FsHaInnerCommand = ''
     $global:FsHaScheduledMutation = $Null
     $global:FsHaTaskRegistrations = @()
@@ -242,7 +224,6 @@ Describe 'Set-FileServerCluster' {
     $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | ConvertFrom-Json
     $Result.changed | Should -BeFalse
     $global:FsHaClusterWrites | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     @($global:FsHaClusterReads | Where-Object NameBound) | Should -HaveCount 0
   }
 
@@ -322,8 +303,6 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterWrites[0].Force | Should -BeTrue
     $Result.after.physical_disk_names | Should -HaveCount 0
     $global:FsHaEligibleDiskReads | Should -Be 0
-    $global:FsHaComputerAccountReads | Should -Be @('TCNAW-FSCL01$')
-    $global:FsHaComputerAccountWrites.UserAccountControl | Should -Be @(4098)
     $global:FsHaTaskRegistrations | Should -HaveCount 1
     $global:FsHaTaskRegistrations[0].User | Should -Be 'TCN\svc-fscluster-mgr'
     $global:FsHaTaskRegistrations[0].PasswordMatches | Should -BeTrue
@@ -361,7 +340,6 @@ Describe 'Set-FileServerCluster' {
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
       Should -Throw '*ClusSvc is stopped*CLUSDB present = True*StartType = Manual*Starting ClusSvc or evicting the node is an operator decision*'
     $global:FsHaClusterReads | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
@@ -371,7 +349,6 @@ Describe 'Set-FileServerCluster' {
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
       Should -Throw '*ClusSvc is stopped*CLUSDB present = False*StartType = Automatic*Starting ClusSvc or evicting the node is an operator decision*'
     $global:FsHaClusterReads | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
@@ -384,7 +361,6 @@ Describe 'Set-FileServerCluster' {
 
     $Context.Result.actions | Should -Be @('create_cluster')
     $global:FsHaClusterReads | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
@@ -396,7 +372,6 @@ Describe 'Set-FileServerCluster' {
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
       Should -Throw '*ClusSvc is absent*lifecycle was violated*'
     $global:FsHaClusterReads | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
@@ -428,7 +403,6 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterWrites[0].Command | Should -Be 'Add'
     $global:FsHaClusterWrites[0].Name | Should -Be 'tcnaw-hafs02b'
     $global:FsHaClusterWrites[0].NoStorage | Should -BeTrue
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaInnerCommand | Should -Match '\$Clusters = @\(Get-Cluster\)'
     $global:FsHaInnerCommand | Should -Not -Match 'Get-Cluster -Name'
     $global:FsHaInnerCommand | Should -Match 'Add-ClusterNode -InputObject \$Cluster'
@@ -487,7 +461,6 @@ Describe 'Set-FileServerCluster' {
     $Context.Changed | Should -BeTrue
     $Context.Result.actions | Should -Be @('create_cluster')
     $global:FsHaClusterWrites | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
   }
 
   It 'predicts missing-node check mode with zero writes' {
@@ -502,7 +475,6 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaClusterName = 'OTHER'
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } | Should -Throw '*differently named*'
     $global:FsHaClusterWrites | Should -HaveCount 0
-    $global:FsHaComputerAccountReads | Should -HaveCount 0
     $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
@@ -538,17 +510,6 @@ Describe 'Set-FileServerCluster' {
     $Context = New-AnsibleContext
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | Out-Null
     $Context.Changed | Should -BeFalse
-  }
-
-  It 'leaves an already disabled prestaged CNO unchanged on the create path' {
-    $global:FsHaClusterPresent = $False
-    $global:FsHaComputerAccountControl = 4098
-    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
-
-    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | Out-Null
-
-    $global:FsHaComputerAccountReads | Should -Be @('TCNAW-FSCL01$')
-    $global:FsHaComputerAccountWrites | Should -HaveCount 0
   }
 
   It 'surfaces a failed batch mutation transcript and unregisters the task' {

@@ -49,5 +49,5 @@ The directory DACL is protected and contains exactly SYSTEM and local Administra
 `FullControl` plus Domain Users `Modify`; the share ACL contains exactly local Administrators
 `Full` plus Domain Users `Change`. Owner, group, and SACL are preserved.
 
-Not implemented: workgroup file-share witness/quorum, an AZ-b file-server role, and Storage
-Replica. Quorum remains `NodeMajority`; the adopted AZ-b disk is owner-scoped but hosts no role.
+Not implemented: the witness SMB share and quorum, an AZ-b file-server role, and Storage Replica.
+Quorum remains `NodeMajority`; the adopted AZ-b disk is owner-scoped but hosts no role.

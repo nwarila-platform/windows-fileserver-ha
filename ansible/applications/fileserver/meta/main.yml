@@ -6,8 +6,8 @@
 #
 # Defaults describe the ratified SMB, four-node cluster, disk-owner, AZ-a file-server role,
 # and encrypted share policy. Runtime volume identities and the cluster password are resolved
-# only by the playbook. Witness quorum, Storage Replica, and a second file-server role are
-# explicitly outside the implemented surface; tasks/validate.yml owns enforcement.
+# only by the playbook. The witness SMB share and quorum, Storage Replica, and a second file-server
+# role are explicitly outside the implemented surface; tasks/validate.yml owns enforcement.
 # =========================================================================================== #
 ---
 galaxy_info:
@@ -17,8 +17,8 @@ galaxy_info:
   description: >-
     Windows Server 2025 file service: SMB and node prerequisites, a four-node WSFC cluster,
     two adopted owner-scoped shared disks, one AZ-a clustered file-server role, and its exact
-    encrypted continuously available data share. Workgroup witness quorum, Storage Replica,
-    and an AZ-b file-server role are excluded.
+    encrypted continuously available data share. The witness SMB share and quorum, Storage
+    Replica, and an AZ-b file-server role are excluded.
   license: 'MIT'
   min_ansible_version: '2.17'
   platforms:

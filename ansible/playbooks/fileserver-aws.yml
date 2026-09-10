@@ -4,7 +4,8 @@
 #
 # Brings five ephemeral EC2 instances through host preparation, forms the declared four-node
 # cluster under its service account, adopts both shared disks, and publishes the implemented AZ-a
-# clustered data share. The workgroup witness remains outside domain preparation and quorum.
+# clustered data share. The witness builds the tunnel and joins the domain with the nodes, but
+# remains outside the cluster and deferred quorum.
 #
 # Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
 # ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
@@ -102,12 +103,12 @@
 #endregion --- [ Play: Configure The Guest ] -------------------------------------------------- #
 
 #region ------ [ Play: Prepare The Domain Members ] ------------------------------------------- #
-# The witness is a workgroup file-share witness by design: it has no tunnel egress, domain
-# membership, or data volume. This hosts boundary keeps every domain-side role confined to the
-# four cluster nodes.
+# All five hosts build the tunnel and join the domain. The witness therefore receives an ordinary
+# AD computer object; only the CNO and VCO are prestaged.
+# It has no shared volume and is not a cluster member, so disk preparation remains preparer-only.
 
 - name: 'PLAY | Prepare The Domain Members (ephemeral AWS)'
-  hosts: 'fileserver_nodes'
+  hosts: 'fileserver_nodes:fileserver_witness'
   any_errors_fatal: true
   vars:
     # The lower-numbered node (01) in each AZ is the sole preparer for that pair's shared volume;
@@ -120,8 +121,9 @@
   roles:
 
     #region ------ [ Roles: Remote Client ] --------------------------------------------------- #
-    # Site policy: the role defaults every value remote_client needs, so this play states none.
-    # 'aws_account_id' is an extra-var -- only the pipeline knows which account it deploys into.
+    # This play declares no remote_client configuration: the role defaults every value it needs,
+    # the same as the golden single-server pattern. 'aws_account_id' is an extra-var -- only the
+    # pipeline knows which account it deploys into; the domain_member role below still needs it.
     # Skipped when the product is being removed: an uninstall is not a reason to rebuild a tunnel
     # the host is about to stop needing.
     - role: 'remote_client'
@@ -159,6 +161,44 @@
     #endregion --- [ Roles: Windows Disk Manager ] -------------------------------------------- #
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
+
+  #region ------ [ Post Tasks ] --------------------------------------------------------------- #
+  # New-Cluster's RPC/Kerberos bind to the named domain controller triggers a reverse-PTR lookup
+  # of its IP. The realm's forward-only NRPT rule does not cover reverse zones, so that lookup
+  # falls through to AmazonProvidedDNS on the ENI, returns an authoritative NXDOMAIN, and
+  # formation fails before it ever reaches a live domain controller. Pinning the DC reverse zone
+  # to the DCs closes that gap while leaving the ENI's own DNS servers stock.
+  post_tasks:
+    - name: 'PROCESS | Pin The Domain-Controller Reverse Zone At The Domain Controllers'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+      ansible.windows.win_powershell:
+        error_action: 'stop'
+        script: |
+          Set-StrictMode -Version 3.0
+          $ErrorActionPreference = 'Stop'
+          $Namespace  = '.112.69.10.in-addr.arpa'
+          $NameServers = @('10.69.112.4', '10.69.112.5')
+          $Comment     = 'Managed by windows-fileserver-ha (cluster DC reverse zone)'
+          $existing = @(Get-DnsClientNrptRule | Where-Object -FilterScript { $_.Comment -eq $Comment })
+          $desiredServers = ($NameServers -join ',')
+          $Ansible.Changed = $false
+          if ($existing.Count -eq 0) {
+            $null = Add-DnsClientNrptRule -Namespace $Namespace -NameServers $NameServers -Comment $Comment
+            $Ansible.Changed = $true
+          } elseif ($existing.Count -gt 1) {
+            foreach ($r in $existing) { $null = Remove-DnsClientNrptRule -Name $r.Name -Force }
+            $null = Add-DnsClientNrptRule -Namespace $Namespace -NameServers $NameServers -Comment $Comment
+            $Ansible.Changed = $true
+          } else {
+            $r = $existing[0]
+            $curNs = ($r.Namespace -join ',')
+            $curSrv = ($r.NameServers -join ',')
+            if ($curNs -ne $Namespace -or $curSrv -ne $desiredServers) {
+              $null = Set-DnsClientNrptRule -Name $r.Name -Namespace $Namespace -NameServers $NameServers
+              $Ansible.Changed = $true
+            }
+          }
+  #endregion --- [ Post Tasks ] --------------------------------------------------------------- #
 
 #endregion --- [ Play: Prepare The Domain Members ] ------------------------------------------- #
 
@@ -349,6 +389,7 @@
           # The connection password is reused only for the delegation-capable batch logon.
           no_log: true
           register: '__fileserver_cluster__'
+
           ansible.windows.win_powershell:
             depth: 4
             error_action: 'stop'
@@ -359,16 +400,23 @@
               ReacquireTimeoutSeconds: 120
               StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
               TimeoutSeconds: 1200
+            remote_src: false
             script: >-
               {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-FileServerCluster.ps1') }}
       rescue:
         - name: 'MAIN | Report That The File Server Cluster Could Not Be Formed'
+
           ansible.builtin.fail:
             msg: >-
               {{
                 (
                   (__fileserver_cluster__.error | default([]) | map(attribute='output') | list)
-                  + [(__fileserver_cluster__.msg | default('File server cluster formation failed.'))]
+                  + [
+                    (
+                      __fileserver_cluster__.msg
+                      | default('File server cluster formation failed.')
+                    )
+                  ]
                 )
                 | join('\n')
               }}
@@ -408,6 +456,8 @@
           {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusterSharedDisks.ps1') }}
 
     - name: 'MAIN | Converge The Clustered File Server Role'
+      # The connection password is reused only for the delegation-capable batch logon.
+      no_log: true
       async: 1200
       poll: 15
       register: '__fileserver_clustered_role__'
@@ -423,6 +473,7 @@
           RoleName: "{{ fileserver_running.cluster.file_server.name }}"
           HomeVolumeId: "{{ home_disk.volume_id }}"
           Owners: "{{ home_disk.owners }}"
+          Password: "{{ ansible_password }}"
           StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
           IgnoredNetworkAddress: >-
             {{ fileserver_running.cluster.file_server.ignored_network_addresses }}
@@ -589,7 +640,7 @@
                     enable_dhcp = [int](Read-Parameter $_ 'EnableDhcp')
                   }
                 })
-              $DependencyResult = @(Get-ClusterResourceDependency -Resource $RoleNameResources[0])
+              $DependencyResult = @(Get-ClusterResourceDependency -InputObject $RoleNameResources[0])
               $Dependency = if ($DependencyResult[0].PSObject.Properties.Name -contains 'DependencyExpression') {
                 [string]$DependencyResult[0].DependencyExpression
               } else { [string]$DependencyResult[0] }
@@ -607,7 +658,7 @@
                   state = [string]$Role.State
                   status_dns = [int](Read-Parameter $RoleNameResources[0] 'StatusDNS')
                   owner_node = ([string]$Role.OwnerNode).ToLowerInvariant()
-                  preferred_owners = @(Get-ClusterOwnerNode -Group $Role | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
+                  preferred_owners = @((Get-ClusterOwnerNode -InputObject $Role).OwnerNodes | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
                   resources = @($RoleResources | ForEach-Object {
                       [PSCustomObject]@{ name = [string]$_.Name; type = [string]$_.ResourceType; state = [string]$_.State; owner_group = [string]$_.OwnerGroup }
                     })
@@ -682,7 +733,7 @@
                 observed_unique_id = [string]$Match.disk.UniqueId
                 state = [string]$Match.resource.State
                 owner_group = [string]$Match.resource.OwnerGroup
-                possible_owners = @(Get-ClusterOwnerNode -InputObject $Match.resource | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
+                possible_owners = @((Get-ClusterOwnerNode -InputObject $Match.resource).OwnerNodes | ForEach-Object { ([string]$_.Name).ToLowerInvariant() })
               }
 
         - name: 'END | Re-Read The Clustered Share And Permissions'
@@ -918,7 +969,7 @@
               - 'Quorum remains NodeMajority.'
               - >-
                 The AZ-b disk is adopted and owner-scoped but hosts no file-server role.
-              - 'NOT DONE: workgroup file-share witness/quorum'
+              - 'NOT DONE: file-share witness/quorum'
               - 'NOT DONE: AZ-b file-server role'
               - 'NOT DONE: Storage Replica'
 

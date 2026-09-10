@@ -198,63 +198,6 @@ Try {
     }
   }
 
-  $ConvertToLdapFilterValue = {
-    Param ([System.String]$Value)
-    $Value.Replace('\', '\5c').Replace('*', '\2a').Replace('(', '\28').Replace(')', '\29').Replace("$([System.Char]0)", '\00')
-  }
-
-  $FindComputerAccount = Get-Variable -Name:'SetFileServerClusterFindComputerAccount' -ValueOnly -ErrorAction:'SilentlyContinue'
-  If ($Null -eq $FindComputerAccount) {
-    $FindComputerAccount = {
-      Param ([System.String]$SamAccountName)
-      $RootDse = [ADSI]'LDAP://RootDSE'
-      Try {
-        $SearchRoot = [ADSI]('LDAP://{0}' -f [System.String]$RootDse.Properties['defaultNamingContext'].Value)
-        Try {
-          $Searcher = [System.DirectoryServices.DirectorySearcher]::new($SearchRoot)
-          Try {
-            $Searcher.Filter = '(&(objectCategory=computer)(sAMAccountName={0}))' -f (& $ConvertToLdapFilterValue -Value $SamAccountName)
-            $Null = $Searcher.PropertiesToLoad.Add('userAccountControl')
-            $SearchResults = $Searcher.FindAll()
-            Try {
-              $DirectoryMatches = @($SearchResults)
-              If ($DirectoryMatches.Count -gt 1) { Throw ('Computer account {0} is ambiguous.' -f $SamAccountName) }
-              If ($DirectoryMatches.Count -eq 0) { Return $Null }
-              $UserAccountControl = @($DirectoryMatches[0].Properties['useraccountcontrol'])
-              If ($UserAccountControl.Count -ne 1) { Throw ('Computer account {0} has no single userAccountControl value.' -f $SamAccountName) }
-              [PSCustomObject]@{
-                path                 = [System.String]$DirectoryMatches[0].Path
-                user_account_control = [System.Int32]$UserAccountControl[0]
-              }
-            } Finally {
-              $SearchResults.Dispose()
-            }
-          } Finally {
-            $Searcher.Dispose()
-          }
-        } Finally {
-          $SearchRoot.Dispose()
-        }
-      } Finally {
-        $RootDse.Dispose()
-      }
-    }
-  }
-
-  $SetComputerAccountControl = Get-Variable -Name:'SetFileServerClusterSetComputerAccountControl' -ValueOnly -ErrorAction:'SilentlyContinue'
-  If ($Null -eq $SetComputerAccountControl) {
-    $SetComputerAccountControl = {
-      Param ([System.String]$Path, [System.Int32]$UserAccountControl)
-      $ComputerAccount = [ADSI]$Path
-      Try {
-        $ComputerAccount.Properties['userAccountControl'].Value = $UserAccountControl
-        $ComputerAccount.CommitChanges()
-      } Finally {
-        $ComputerAccount.Dispose()
-      }
-    }
-  }
-
   $GetCurrentIdentityName = Get-Variable -Name:'SetFileServerClusterGetCurrentIdentityName' -ValueOnly -ErrorAction:'SilentlyContinue'
   If ($Null -eq $GetCurrentIdentityName) {
     $GetCurrentIdentityName = { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name }
@@ -433,13 +376,6 @@ Exit $ExitCode
   If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
     $After = $Before
   } Else {
-    If ($Actions.Contains('create_cluster')) {
-      # Only the fresh local signal admits CNO adoption before formation.
-      $ComputerAccount = & $FindComputerAccount -SamAccountName ($ClusterName + '$')
-      If ($Null -ne $ComputerAccount -and ($ComputerAccount.user_account_control -band 0x2) -eq 0) {
-        & $SetComputerAccountControl -Path $ComputerAccount.path -UserAccountControl ($ComputerAccount.user_account_control -bor 0x2)
-      }
-    }
     $MissingNodes = @($Actions | Where-Object -FilterScript { $PSItem.StartsWith('add_node:', [System.StringComparison]::Ordinal) } | ForEach-Object -Process { $PSItem.Substring(9) })
     $Mutation = [PSCustomObject]@{
       create_cluster   = $Actions.Contains('create_cluster')

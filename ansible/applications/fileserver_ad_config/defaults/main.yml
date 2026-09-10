@@ -12,6 +12,13 @@
 ---
 fileserver_ad_config_defaults:
 
+  #region ------ [ Defaults: Deployment Lifecycle ] ------------------------------------------- #
+  # Active Directory cannot distinguish a stale enabled cluster object from one owned by a live
+  # cluster. Existing objects are therefore made adoptable only when the manual caller explicitly
+  # declares that no live cluster exists and this run is preparing a fresh deployment.
+  fresh_deployment: false
+  #endregion --- [ Defaults: Deployment Lifecycle ] ------------------------------------------- #
+
   #region ------ [ Defaults: Cluster Service Account ] --------------------------------------- #
   # The account a failover cluster is formed with. Its password is not defaulted here: the URL
   # that resolves it carries the account id, so the caller composes it.
