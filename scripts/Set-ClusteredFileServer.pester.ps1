@@ -556,7 +556,7 @@ Describe 'Set-ClusteredFileServer' {
   ) {
     $VendorArguments = @{ $Legacy = [PSCustomObject]@{ Name = 'live cluster object' } }
     { Invoke-VendorNameBinding @VendorArguments } | Should -Throw '*Vendor name binding rejects an object*'
-    $Commands = Switch ($Kind) {
+    $Commands = @(Switch ($Kind) {
       'dependency' { @(Get-SourceCommand -Name 'Get-ClusterResourceDependency') }
       'owner-group' {
         @(Get-SourceCommand -Name 'Get-ClusterOwnerNode' | Where-Object -FilterScript {
@@ -564,7 +564,7 @@ Describe 'Set-ClusteredFileServer' {
           })
       }
       'set-dependency' { @(Get-SourceCommand -Name 'Set-ClusterResourceDependency') }
-    }
+    })
     $Commands.Count | Should -BeGreaterThan $Index
     $BoundNames = @(Get-BoundParameterName -Command $Commands[$Index])
     $BoundNames | Should -Contain 'InputObject'
