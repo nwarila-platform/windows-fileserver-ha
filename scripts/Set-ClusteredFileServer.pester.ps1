@@ -52,6 +52,7 @@ BeforeAll {
   $script:Owners = @('tcnaw-hafs01a', 'tcnaw-hafs02a')
   $script:Addresses = @('10.0.1.12', '10.0.33.12')
   $script:Ignored = @('10.0.64.0', '10.0.96.0')
+  $global:FsHaRoleNetworkMask = '255.255.224.0'
   $script:Password = 'pester-role-password'
   $script:OriginalTemp = $env:TEMP
   $script:OriginalSystemRoot = $env:SystemRoot
@@ -180,8 +181,8 @@ BeforeAll {
     $Snapshot = @($global:FsHaRoleResources)
     If ($global:FsHaRolePendingAutoIps) {
       $global:FsHaRolePendingAutoIps = $False
-      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.64.0' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.64.0'; Network = 'Cluster Network 3'; SubnetMask = '255.255.255.0'; EnableDhcp = 1 }
-      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.96.0' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.96.0'; Network = 'Cluster Network 4'; SubnetMask = '255.255.255.0'; EnableDhcp = 1 }
+      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.64.0' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.64.0'; Network = 'Cluster Network 3'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
+      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.96.0' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.96.0'; Network = 'Cluster Network 4'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
     }
     @($Snapshot)
   }
@@ -221,9 +222,9 @@ BeforeAll {
     @('tcnaw-hafs02b', 'tcnaw-hafs01a', 'tcnaw-hafs01b', 'tcnaw-hafs02a') |
       ForEach-Object -Process { [PSCustomObject]@{ Name = $PSItem } }
   }
-  Function Get-CimInstance {
-    Param ([System.String]$ClassName, [System.String]$ComputerName, [System.Object]$ErrorAction)
-    $global:FsHaRoleProbeCalls += [PSCustomObject]@{ ClassName = $ClassName; ComputerName = $ComputerName }
+  Function Get-WmiObject {
+    Param ([System.String]$Class, [System.String]$ComputerName, [System.Object]$ErrorAction)
+    $global:FsHaRoleProbeCalls += [PSCustomObject]@{ Class = $Class; ComputerName = $ComputerName; ErrorAction = [System.String]$ErrorAction }
     $global:FsHaRoleOperations += 'Probe:{0}' -f $ComputerName
     $CallCount = @($global:FsHaRoleProbeCalls | Where-Object -FilterScript { $PSItem.ComputerName -eq $ComputerName }).Count
     If ($global:FsHaRoleProbeFailures.ContainsKey($ComputerName) -and
@@ -269,13 +270,13 @@ BeforeAll {
     $HomeResource = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.ResourceType -eq 'Physical Disk' })[0]
     $HomeResource.OwnerGroup = $Name
     $global:FsHaRoleResources += New-Resource -Name 'File Server Name' -Type 'Network Name' -Group $Name
-    $global:FsHaRoleResources += New-Resource -Name 'IP Address 10.0.1.12' -Type 'IP Address' -Group $Name -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
-    $global:FsHaRoleResources += New-Resource -Name 'IP Address 10.0.33.12' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.33.12'; Network = 'Cluster Network 2'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'IP Address 10.0.1.12' -Type 'IP Address' -Group $Name -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'IP Address 10.0.33.12' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.33.12'; Network = 'Cluster Network 2'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     If ($global:FsHaRoleDelayAutoIps) {
       $global:FsHaRolePendingAutoIps = $True
     } Else {
-      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.64.0' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.64.0'; Network = 'Cluster Network 3'; SubnetMask = '255.255.255.0'; EnableDhcp = 1 }
-      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.96.0' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.96.0'; Network = 'Cluster Network 4'; SubnetMask = '255.255.255.0'; EnableDhcp = 1 }
+      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.64.0' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.64.0'; Network = 'Cluster Network 3'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
+      $global:FsHaRoleResources += New-Resource -Name 'Auto IP 10.0.96.0' -Type 'IP Address' -Group $Name -State 'Offline' -Parameters @{ Address = '10.0.96.0'; Network = 'Cluster Network 4'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
     }
     $global:FsHaRoleDependency = '[IP Address 10.0.1.12] or [IP Address 10.0.33.12]'
   }
@@ -466,7 +467,7 @@ BeforeAll {
 AfterAll {
   $env:TEMP = $script:OriginalTemp
   $env:SystemRoot = $script:OriginalSystemRoot
-  Remove-Variable -Name 'SetClusteredFileServerGetCurrentIdentityName', 'SetClusteredFileServerReadTranscriptTail', 'SetClusteredFileServerSetRestrictedAcl', 'SetClusteredFileServerReadAcl', 'SetClusteredFileServerRegisterScheduledTask', 'SetClusteredFileServerGetScheduledTask', 'SetClusteredFileServerStartScheduledTask', 'SetClusteredFileServerGetScheduledTaskInfo', 'SetClusteredFileServerStopScheduledTask', 'SetClusteredFileServerUnregisterScheduledTask', 'SetClusteredFileServerGetUtcNow', 'SetClusteredFileServerWaitForScheduledTask', 'SetClusteredFileServerRemoveArtifact', 'FsHaRoleClusterName', 'FsHaRoleClusterReads', 'FsHaRoleClusterInputs', 'FsHaRoleLocalDisks', 'FsHaRoleResources', 'FsHaResourceOwners', 'FsHaAvailableStorageGroup', 'FsHaRolePresent', 'FsHaRoleGroupCount', 'FsHaRoleGroup', 'FsHaRoleOwners', 'FsHaRoleNetworks', 'FsHaRoleDependency', 'FsHaRoleDependencies', 'FsHaRoleWrites', 'FsHaRoleFrozen', 'FsHaRoleStartFrozen', 'FsHaRoleDelayAutoIps', 'FsHaRolePendingAutoIps', 'FsHaRoleInnerCommand', 'FsHaRoleScheduledMutation', 'FsHaRoleTaskRegistrations', 'FsHaRoleTaskStarts', 'FsHaRoleTaskResult', 'FsHaRoleTaskUnregistrations', 'FsHaRoleTaskActionArgument', 'FsHaRolePayloadPath', 'FsHaRolePayloadText', 'FsHaRoleTaskExists', 'FsHaRoleTaskState', 'FsHaRoleTaskLastRunTime', 'FsHaRoleTaskStops', 'FsHaRoleAclWrites', 'FsHaRoleAclFault', 'FsHaRoleRejectMultipleIpParameters', 'FsHaRoleCleanupAttempts', 'FsHaRoleInfoReads', 'FsHaRoleProbeCalls', 'FsHaRoleProbeFailures', 'FsHaRoleOperations', 'FsHaRolePreScreenDeadlineSeconds', 'FsHaRolePreScreenIntervalSeconds' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetClusteredFileServerGetCurrentIdentityName', 'SetClusteredFileServerReadTranscriptTail', 'SetClusteredFileServerSetRestrictedAcl', 'SetClusteredFileServerReadAcl', 'SetClusteredFileServerRegisterScheduledTask', 'SetClusteredFileServerGetScheduledTask', 'SetClusteredFileServerStartScheduledTask', 'SetClusteredFileServerGetScheduledTaskInfo', 'SetClusteredFileServerStopScheduledTask', 'SetClusteredFileServerUnregisterScheduledTask', 'SetClusteredFileServerGetUtcNow', 'SetClusteredFileServerWaitForScheduledTask', 'SetClusteredFileServerRemoveArtifact', 'FsHaRoleClusterName', 'FsHaRoleClusterReads', 'FsHaRoleClusterInputs', 'FsHaRoleLocalDisks', 'FsHaRoleResources', 'FsHaResourceOwners', 'FsHaAvailableStorageGroup', 'FsHaRolePresent', 'FsHaRoleGroupCount', 'FsHaRoleGroup', 'FsHaRoleOwners', 'FsHaRoleNetworks', 'FsHaRoleDependency', 'FsHaRoleDependencies', 'FsHaRoleWrites', 'FsHaRoleFrozen', 'FsHaRoleStartFrozen', 'FsHaRoleDelayAutoIps', 'FsHaRolePendingAutoIps', 'FsHaRoleInnerCommand', 'FsHaRoleScheduledMutation', 'FsHaRoleTaskRegistrations', 'FsHaRoleTaskStarts', 'FsHaRoleTaskResult', 'FsHaRoleTaskUnregistrations', 'FsHaRoleTaskActionArgument', 'FsHaRolePayloadPath', 'FsHaRolePayloadText', 'FsHaRoleTaskExists', 'FsHaRoleTaskState', 'FsHaRoleTaskLastRunTime', 'FsHaRoleTaskStops', 'FsHaRoleAclWrites', 'FsHaRoleAclFault', 'FsHaRoleRejectMultipleIpParameters', 'FsHaRoleCleanupAttempts', 'FsHaRoleInfoReads', 'FsHaRoleProbeCalls', 'FsHaRoleProbeFailures', 'FsHaRoleOperations', 'FsHaRolePreScreenDeadlineSeconds', 'FsHaRolePreScreenIntervalSeconds', 'FsHaRoleNetworkMask' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-ClusteredFileServer' {
@@ -495,8 +496,8 @@ Describe 'Set-ClusteredFileServer' {
     $HomeResource = New-Resource -Name 'Cluster Disk 9' -Type 'Physical Disk' -Group 'TCNAW-HAFS01' -Parameters @{ DiskIdGuid = $Guid }
     $AwayResource = New-Resource -Name 'Cluster Disk 10' -Type 'Physical Disk' -Group 'Available Storage' -Parameters @{ DiskIdGuid = '22222222-2222-2222-2222-222222222222' }
     $Name = New-Resource -Name 'File Server Name' -Type 'Network Name' -Group 'TCNAW-HAFS01'
-    $Ip1 = New-Resource -Name 'IP Address 10.0.1.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
-    $Ip2 = New-Resource -Name 'IP Address 10.0.33.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.33.12'; Network = 'Cluster Network 2'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $Ip1 = New-Resource -Name 'IP Address 10.0.1.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
+    $Ip2 = New-Resource -Name 'IP Address 10.0.33.12' -Type 'IP Address' -Group 'TCNAW-HAFS01' -State 'Offline' -Parameters @{ Address = '10.0.33.12'; Network = 'Cluster Network 2'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     $global:FsHaRoleResources = @($HomeResource, $Name, $Ip1, $Ip2, $AwayResource)
     $global:FsHaResourceOwners = @{
       'Cluster Disk 9' = @($script:Owners)
@@ -508,10 +509,10 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleGroup = [PSCustomObject]@{ Name = 'TCNAW-HAFS01'; State = 'Online'; OwnerNode = 'tcnaw-hafs01a' }
     $global:FsHaRoleOwners = @($script:Owners)
     $global:FsHaRoleNetworks = @(
-      [PSCustomObject]@{ Name = 'Cluster Network 1'; Address = '10.0.1.0'; AddressMask = '255.255.255.0'; Role = 3 },
-      [PSCustomObject]@{ Name = 'Cluster Network 2'; Address = '10.0.33.0'; AddressMask = '255.255.255.0'; Role = 3 },
-      [PSCustomObject]@{ Name = 'Cluster Network 3'; Address = '10.0.64.0'; AddressMask = '255.255.255.0'; Role = 3 },
-      [PSCustomObject]@{ Name = 'Cluster Network 4'; Address = '10.0.96.0'; AddressMask = '255.255.255.0'; Role = 3 }
+      [PSCustomObject]@{ Name = 'Cluster Network 1'; Address = '10.0.0.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 },
+      [PSCustomObject]@{ Name = 'Cluster Network 2'; Address = '10.0.32.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 },
+      [PSCustomObject]@{ Name = 'Cluster Network 3'; Address = '10.0.64.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 },
+      [PSCustomObject]@{ Name = 'Cluster Network 4'; Address = '10.0.96.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 }
     )
     $global:FsHaRoleDependency = '[IP Address 10.0.1.12] or [IP Address 10.0.33.12]'
     $global:FsHaRoleDependencies = @{}
@@ -823,6 +824,10 @@ Describe 'Set-ClusteredFileServer' {
   It 'D8-ROLE-CREATION-PRE-SCREEN retries every cold node and blocks creation at the deadline' {
     $NodeNames = @('tcnaw-hafs02b', 'tcnaw-hafs01a', 'tcnaw-hafs01b', 'tcnaw-hafs02a')
     $ColdNode = 'tcnaw-hafs01a'
+    $WmiProbes = @(Get-SourceCommand -Name 'Get-WmiObject')
+    $WmiProbes | Should -HaveCount 1
+    @(Get-BoundParameterName -Command $WmiProbes[0]) | Should -Be @('Class', 'ComputerName', 'ErrorAction')
+    @(Get-SourceCommand -Name 'Get-CimInstance') | Should -HaveCount 0
     $global:FsHaRolePresent = $False
     $global:FsHaRoleResources = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.ResourceType -eq 'Physical Disk' })
     $global:FsHaRoleResources[0].OwnerGroup = 'Available Storage'
@@ -831,7 +836,8 @@ Describe 'Set-ClusteredFileServer' {
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
 
     $global:FsHaRoleProbeCalls.ComputerName | Should -Be @($NodeNames + $NodeNames)
-    $global:FsHaRoleProbeCalls.ClassName | Select-Object -Unique | Should -Be 'Win32_ComputerSystem'
+    $global:FsHaRoleProbeCalls.Class | Select-Object -Unique | Should -Be 'Win32_ComputerSystem'
+    $global:FsHaRoleProbeCalls.ErrorAction | Select-Object -Unique | Should -Be 'Stop'
     $global:FsHaRoleOperations[-1] | Should -Be 'Create'
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'Create' }) | Should -HaveCount 1
 
@@ -871,11 +877,11 @@ Describe 'Set-ClusteredFileServer' {
       Should -Be @($script:Addresses | Sort-Object)
     $SortedRoleIps = @($RoleIps | Sort-Object -Property { [System.String]$PSItem.Parameters.Address })
     $SortedRoleIps[0].Parameters.Network | Should -Be 'Cluster Network 1'
-    $SortedRoleIps[0].Parameters.SubnetMask | Should -Be '255.255.255.0'
+    $SortedRoleIps[0].Parameters.SubnetMask | Should -Be $global:FsHaRoleNetworkMask
     $SortedRoleIps[0].Parameters.Address | Should -Be '10.0.1.12'
     $SortedRoleIps[0].Parameters.EnableDhcp | Should -Be 0
     $SortedRoleIps[1].Parameters.Network | Should -Be 'Cluster Network 2'
-    $SortedRoleIps[1].Parameters.SubnetMask | Should -Be '255.255.255.0'
+    $SortedRoleIps[1].Parameters.SubnetMask | Should -Be $global:FsHaRoleNetworkMask
     $SortedRoleIps[1].Parameters.Address | Should -Be '10.0.33.12'
     $SortedRoleIps[1].Parameters.EnableDhcp | Should -Be 0
     @($RoleIps | Where-Object -FilterScript { [System.String]$PSItem.Parameters.Address -in $script:Ignored }) |
@@ -986,8 +992,8 @@ Describe 'Set-ClusteredFileServer' {
   }
 
   It 'removes an arbitrary extra IP in one stop-start transaction' {
-    $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.0'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
-    $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact 2' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.33.0'; Network = 'Cluster Network 2'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact 2' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.32.0'; Network = 'Cluster Network 2'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
     $global:FsHaRoleWrites.Command | Should -Be @('StopGroup', 'StopIp', 'RemoveIp', 'StopIp', 'RemoveIp', 'Dependency', 'StartGroup')
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'StopGroup' }) | Should -HaveCount 1
@@ -997,7 +1003,7 @@ Describe 'Set-ClusteredFileServer' {
   It 'refuses to prune a DHCP-enabled extra IP before any cluster write' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleResources += New-Resource -Name 'DHCP Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.0'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 1 }
+    $global:FsHaRoleResources += New-Resource -Name 'DHCP Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
     $global:FsHaRoleWrites = @()
 
     $InnerResult = Invoke-RoleMutationInner -Command $global:FsHaRoleInnerCommand
@@ -1010,7 +1016,7 @@ Describe 'Set-ClusteredFileServer' {
   It 'refuses to prune an extra IP used by another Network Name before any cluster write' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleResources += New-Resource -Name 'Shared Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.0'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'Shared Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     $global:FsHaRoleResources += New-Resource -Name 'Other Service Name' -Type 'Network Name' -Group 'Other Service'
     $global:FsHaRoleDependencies['Other Service Name'] = '[Shared Artifact]'
     $global:FsHaRoleWrites = @()
@@ -1025,7 +1031,7 @@ Describe 'Set-ClusteredFileServer' {
   It 'refuses to prune from a group carrying a second Network Name before any cluster write' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleResources += New-Resource -Name 'Extra Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.0'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'Extra Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     $global:FsHaRoleResources += New-Resource -Name 'Second File Server Name' -Type 'Network Name' -Group 'TCNAW-HAFS01'
     $global:FsHaRoleWrites = @()
 
@@ -1046,7 +1052,7 @@ Describe 'Set-ClusteredFileServer' {
     $Set | Should -HaveCount 4
     $Set.Resource | Should -Be @('IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12')
     $Set.Parameter | Should -Be @('Network', 'SubnetMask', 'Address', 'EnableDhcp')
-    $Set.Value | Should -Be @('Cluster Network 2', '255.255.255.0', '10.0.33.12', 0)
+    $Set.Value | Should -Be @('Cluster Network 2', $global:FsHaRoleNetworkMask, '10.0.33.12', 0)
   }
 
   It 'repairs wrong DHCP network and mask in one transaction' {
@@ -1122,24 +1128,24 @@ Describe 'Set-ClusteredFileServer' {
   It 'rejects missing or extra client-eligible network coverage' {
     $global:FsHaRoleNetworks = @($global:FsHaRoleNetworks | Where-Object -FilterScript { $PSItem.Address -ne '10.0.96.0' })
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*Ignored network address*'
-    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Cluster Network 4'; Address = '10.0.96.0'; AddressMask = '255.255.255.0'; Role = 3 }
+    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Cluster Network 4'; Address = '10.0.96.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 }
     $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Unexpected'; Address = '172.16.0.0'; AddressMask = '255.255.0.0'; Role = 3 }
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*cover every*'
   }
 
   It 'rejects missing or ambiguous static and ignored network identity' {
-    $global:FsHaRoleNetworks = @($global:FsHaRoleNetworks | Where-Object -FilterScript { $PSItem.Address -ne '10.0.1.0' })
+    $global:FsHaRoleNetworks = @($global:FsHaRoleNetworks | Where-Object -FilterScript { $PSItem.Address -ne '10.0.0.0' })
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*Static address*'
-    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Cluster Network 1'; Address = '10.0.1.0'; AddressMask = '255.255.255.0'; Role = 3 }
+    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Cluster Network 1'; Address = '10.0.0.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 }
     $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Overlapping Static'; Address = '10.0.0.0'; AddressMask = '255.255.0.0'; Role = 3 }
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*Static address*'
     $global:FsHaRoleNetworks = @($global:FsHaRoleNetworks | Where-Object -FilterScript { $PSItem.Name -ne 'Overlapping Static' })
-    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Duplicate Ignored'; Address = '10.0.64.0'; AddressMask = '255.255.255.0'; Role = 3 }
+    $global:FsHaRoleNetworks += [PSCustomObject]@{ Name = 'Duplicate Ignored'; Address = '10.0.64.0'; AddressMask = $global:FsHaRoleNetworkMask; Role = 3 }
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*Ignored network address*'
   }
 
   It 'rejects duplicate IP and missing or multiple Network Name resources' {
-    $global:FsHaRoleResources += New-Resource -Name 'Duplicate' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = '255.255.255.0'; EnableDhcp = 0 }
+    $global:FsHaRoleResources += New-Resource -Name 'Duplicate' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.1.12'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*duplicate IP*'
     $global:FsHaRoleResources = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.ResourceType -ne 'Network Name' -and $PSItem.Name -ne 'Duplicate' })
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } | Should -Throw '*exactly one Network Name*'

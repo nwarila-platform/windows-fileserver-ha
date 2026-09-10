@@ -121,20 +121,19 @@ git -C "${FRAMEWORK_DIR}" fetch --quiet origin
 git -C "${FRAMEWORK_DIR}" checkout --quiet --detach "${PIN}"
 echo ">> Framework pinned at $(git -C "${FRAMEWORK_DIR}" rev-parse --short HEAD)"
 
-# The framework's own roles track only files/<Name>.ps1.stub, so their scripts must be
-# materialized in the checkout. This runs BEFORE the overlay because that materializer validates
-# every stub it finds, and this repository's roles resolve their sources from this repository.
-# A previous run's overlay survives the checkout, and the materializer would then try to resolve
-# THIS repository's stubs against the framework's own scripts/ and fail. Clearing the overlay
-# first restores the clean-checkout precondition the ordering above depends on.
+# Both source trees track only files/<Name>.ps1.stub. A previous repository overlay survives the
+# framework checkout, so clear it before the framework materializer validates every stub it finds.
+# Materialize both source trees before the overlay so rsync carries their runnable .ps1 files.
 shopt -s nullglob
 for stale_role in "${REPO_ROOT}"/ansible/applications/*; do
     rm -rf "${FRAMEWORK_DIR}/applications/$(basename "${stale_role}")"
 done
 shopt -u nullglob
 
+LC_ALL=C bash "${REPO_ROOT}/scripts/materialize-role-scripts.sh"
+
 if [ -x "${FRAMEWORK_DIR}/scripts/materialize-role-scripts.sh" ]; then
-    (cd "${FRAMEWORK_DIR}" && ./scripts/materialize-role-scripts.sh)
+    (cd "${FRAMEWORK_DIR}" && LC_ALL=C ./scripts/materialize-role-scripts.sh)
 fi
 
 # --- 2. Overlay roles into the framework namespace ------------------------------------------ #

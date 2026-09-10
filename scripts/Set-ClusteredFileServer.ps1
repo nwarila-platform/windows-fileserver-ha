@@ -490,16 +490,11 @@ $ExitCode = 1
       $PreScreenIntervalSeconds = 15
       $PreScreenDeadline = [System.DateTime]::UtcNow.AddSeconds($PreScreenDeadlineSeconds)
       $ClusterNodeNames = @(Get-ClusterNode -InputObject $Cluster | ForEach-Object -Process { [System.String]$PSItem.Name })
-      $UseCimProbe = $Null -ne (Get-Command -Name 'Get-CimInstance' -ErrorAction SilentlyContinue)
       Do {
         $LastProbeFailures = [ordered]@{}
         ForEach ($ClusterNodeName In $ClusterNodeNames) {
           Try {
-            If ($UseCimProbe) {
-              $ProbeResult = @(Get-CimInstance -ClassName Win32_ComputerSystem -ComputerName $ClusterNodeName -ErrorAction Stop)
-            } Else {
-              $ProbeResult = @(Get-WmiObject -Class Win32_ComputerSystem -ComputerName $ClusterNodeName -ErrorAction Stop)
-            }
+            $ProbeResult = @(Get-WmiObject -Class Win32_ComputerSystem -ComputerName $ClusterNodeName -ErrorAction Stop)
             If ($ProbeResult.Count -ne 1 -or $Null -eq $ProbeResult[0]) {
               Throw ('Expected one Win32_ComputerSystem result; found {0}.' -f $ProbeResult.Count)
             }
@@ -957,13 +952,13 @@ If ($Actions.Count -eq 0 -or $Ansible.CheckMode) {
     }
   )
   $Mutation = [PSCustomObject]@{
-    cluster_name          = [System.String]$ClusterName
-    role_name             = [System.String]$RoleName
-    create_role           = $Actions.Contains('create_role')
-    home_disk_name        = [System.String]$HomeDisk.Name
-    owners                = [System.String[]]@($OwnerNames)
-    static_addresses      = [System.String[]]@($DesiredAddresses)
-    desired_ips           = @($DesiredIps)
+    cluster_name     = [System.String]$ClusterName
+    role_name        = [System.String]$RoleName
+    create_role      = $Actions.Contains('create_role')
+    home_disk_name   = [System.String]$HomeDisk.Name
+    owners           = [System.String[]]@($OwnerNames)
+    static_addresses = [System.String[]]@($DesiredAddresses)
+    desired_ips      = @($DesiredIps)
   }
   & $InvokeBatchMutation -Mutation $Mutation -RunAsPassword $Password -DeadlineSeconds $TimeoutSeconds
   $After = & $GetRoleState -Cluster $Cluster -Name $RoleName
