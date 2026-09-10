@@ -456,29 +456,48 @@
           {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusterSharedDisks.ps1') }}
 
     - name: 'MAIN | Converge The Clustered File Server Role'
-      # The connection password is reused only for the delegation-capable batch logon.
-      no_log: true
-      async: 1200
-      poll: 15
-      register: '__fileserver_clustered_role__'
-      vars:
-        home_disk: >-
-          {{ __fileserver_resolved_shared_disks__
-             | selectattr('fileserver_home', 'equalto', true) | list | first }}
-      ansible.windows.win_powershell:
-        depth: 5
-        error_action: 'stop'
-        parameters:
-          ClusterName: "{{ fileserver_running.cluster.name }}"
-          RoleName: "{{ fileserver_running.cluster.file_server.name }}"
-          HomeVolumeId: "{{ home_disk.volume_id }}"
-          Owners: "{{ home_disk.owners }}"
-          Password: "{{ ansible_password }}"
-          StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
-          IgnoredNetworkAddress: >-
-            {{ fileserver_running.cluster.file_server.ignored_network_addresses }}
-        script: >-
-          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusteredFileServer.ps1') }}
+      block:
+        - name: 'MAIN | Run The Clustered File Server Role Convergence'
+          # The connection password is reused only for the delegation-capable batch logon.
+          no_log: true
+          async: 1200
+          poll: 15
+          register: '__fileserver_clustered_role__'
+          vars:
+            home_disk: >-
+              {{ __fileserver_resolved_shared_disks__
+                 | selectattr('fileserver_home', 'equalto', true) | list | first }}
+          ansible.windows.win_powershell:
+            depth: 5
+            error_action: 'stop'
+            parameters:
+              ClusterName: "{{ fileserver_running.cluster.name }}"
+              RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+              HomeVolumeId: "{{ home_disk.volume_id }}"
+              Owners: "{{ home_disk.owners }}"
+              Password: "{{ ansible_password }}"
+              StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
+              IgnoredNetworkAddress: >-
+                {{ fileserver_running.cluster.file_server.ignored_network_addresses }}
+            script: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusteredFileServer.ps1') }}
+      rescue:
+        - name: 'MAIN | Report That The Clustered File Server Role Could Not Be Converged'
+
+          ansible.builtin.fail:
+            msg: >-
+              {{
+                (
+                  (__fileserver_clustered_role__.error | default([]) | map(attribute='output') | list)
+                  + [
+                    (
+                      __fileserver_clustered_role__.msg
+                      | default('Clustered file server role convergence failed.')
+                    )
+                  ]
+                )
+                | join('\n')
+              }}
 
     - name: 'MAIN | Read The Clustered File Server Owner'
       check_mode: false
@@ -913,22 +932,22 @@
                 | selectattr('state', 'equalto', 'Online') | list | length == 1
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='network_address') | list | first) == '10.0.1.0'
+                 | map(attribute='network_address') | list | first) == '10.0.0.0'
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='subnet_mask') | list | first) == '255.255.255.0'
+                 | map(attribute='subnet_mask') | list | first) == '255.255.224.0'
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='network_address_mask') | list | first) == '255.255.255.0'
+                 | map(attribute='network_address_mask') | list | first) == '255.255.224.0'
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='network_address') | list | first) == '10.0.33.0'
+                 | map(attribute='network_address') | list | first) == '10.0.32.0'
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='subnet_mask') | list | first) == '255.255.255.0'
+                 | map(attribute='subnet_mask') | list | first) == '255.255.224.0'
               - >-
                 (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='network_address_mask') | list | first) == '255.255.255.0'
+                 | map(attribute='network_address_mask') | list | first) == '255.255.224.0'
               - >-
                 __fileserver_final_cluster_state__.role.dependency
                 == __fileserver_final_cluster_state__.role.expected_dependency
