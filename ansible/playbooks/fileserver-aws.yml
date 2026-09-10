@@ -793,22 +793,41 @@
                 ([System.Security.Principal.NTAccount]$Principal).Translate(
                   [System.Security.Principal.SecurityIdentifier]).Value
               }
+              $SynchronizeRight = [int][System.Security.AccessControl.FileSystemRights]::Synchronize
+              function Normalize-NtfsRights([int]$RightsValue) {
+                [int]($RightsValue -bor $SynchronizeRight)
+              }
               $DesiredNtfs = @($NtfsAccess | ForEach-Object {
-                  '{0}|{1}|{2}|{3}|{4}' -f (Resolve-Sid $_.principal), $_.access_control_type,
-                    $_.rights, $_.inheritance_flags, $_.propagation_flags
-                } | Sort-Object)
+                  $Sid = Resolve-Sid $_.principal
+                  [PSCustomObject]@{
+                    sid = $Sid
+                    access_type = [string]$_.access_control_type
+                    rights_value = Normalize-NtfsRights ([int][System.Security.AccessControl.FileSystemRights]$_.rights)
+                    inheritance_value = [int][System.Security.AccessControl.InheritanceFlags]$_.inheritance_flags
+                    propagation_value = [int][System.Security.AccessControl.PropagationFlags]$_.propagation_flags
+                    canonical = '{0}|{1}|{2}|ContainerInherit,ObjectInherit|{3}' -f
+                      $Sid, $_.access_control_type, $_.rights, $_.propagation_flags
+                  }
+                })
               $Acl = Get-Acl -LiteralPath $Path
               $Inherited = @($Acl.Access | Where-Object IsInherited).Count
               $CurrentNtfs = @($Acl.Access | Where-Object { -not $_.IsInherited } | ForEach-Object {
                   $Rule = $_
                   $Sid = $Rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
-                  $Desired = @($NtfsAccess | Where-Object {
-                      (Resolve-Sid $_.principal) -eq $Sid -and
-                      [int][System.Security.AccessControl.FileSystemRights]$_.rights -eq [int]$Rule.FileSystemRights
+                  $Desired = @($DesiredNtfs | Where-Object {
+                      $_.sid -eq $Sid -and $_.access_type -eq [string]$Rule.AccessControlType -and
+                      $_.rights_value -eq (Normalize-NtfsRights ([int]$Rule.FileSystemRights)) -and
+                      $_.inheritance_value -eq [int]$Rule.InheritanceFlags -and
+                      $_.propagation_value -eq [int]$Rule.PropagationFlags
                     })
-                  $Rights = if ($Desired.Count -eq 1) { [string]$Desired[0].rights } else { [string]$Rule.FileSystemRights }
-                  '{0}|{1}|{2}|{3}|{4}' -f $Sid, $Rule.AccessControlType, $Rights, $Rule.InheritanceFlags, $Rule.PropagationFlags
+                  if ($Desired.Count -eq 1) {
+                    $Desired[0].canonical
+                  } else {
+                    '{0}|{1}|{2}|{3}|{4}' -f $Sid, $Rule.AccessControlType,
+                      $Rule.FileSystemRights, $Rule.InheritanceFlags, $Rule.PropagationFlags
+                  }
                 } | Sort-Object)
+              $DesiredNtfsCanonical = @($DesiredNtfs.canonical | Sort-Object)
               $DesiredShare = @($ShareAccess | ForEach-Object {
                   '{0}|{1}|{2}' -f (Resolve-Sid $_.principal), $_.access_control_type, $_.access_right
                 } | Sort-Object)
@@ -829,7 +848,7 @@
                 encrypt_data = [bool]$Share.EncryptData
                 dacl_protected = [bool]$Acl.AreAccessRulesProtected
                 inherited_count = $Inherited
-                desired_ntfs = $DesiredNtfs
+                desired_ntfs = $DesiredNtfsCanonical
                 current_ntfs = $CurrentNtfs
                 desired_share_access = $DesiredShare
                 current_share_access = $CurrentShare
@@ -874,108 +893,349 @@
                  else __fileserver_final_disk_a__ }}
             __fileserver_final_share_state__: "{{ __fileserver_final_share__.output[0] }}"
             __fileserver_final_role_ips__: "{{ __fileserver_final_cluster_state__.role.ip_resources }}"
+            __fileserver_final_role_disk_names__: >-
+              {{ __fileserver_final_cluster_state__.role.resources
+                 | selectattr('type', 'equalto', 'Physical Disk')
+                 | map(attribute='name') | list }}
+            __fileserver_final_comparisons__:
+              - name: 'cluster node count'
+                assertion: "{{ __fileserver_final_cluster_state__.nodes | length == 4 }}"
+                expected: 4
+                observed: "{{ __fileserver_final_cluster_state__.nodes | length }}"
+              - name: 'cluster node names'
+                assertion: >-
+                  {{ __fileserver_final_cluster_state__.nodes
+                     | map(attribute='name') | list | sort
+                     == fileserver_running.cluster.nodes | sort }}
+                expected: "{{ fileserver_running.cluster.nodes | sort }}"
+                observed: >-
+                  {{ __fileserver_final_cluster_state__.nodes
+                     | map(attribute='name') | list | sort }}
+              - name: 'cluster node states'
+                assertion: >-
+                  {{ __fileserver_final_cluster_state__.nodes
+                     | rejectattr('state', 'equalto', 'Up') | list | length == 0 }}
+                expected: []
+                observed: >-
+                  {{ __fileserver_final_cluster_state__.nodes
+                     | rejectattr('state', 'equalto', 'Up') | list }}
+              - name: 'cluster RegisterAllProvidersIP'
+                assertion: "{{ __fileserver_final_cluster_state__.register_all_providers_ip == 0 }}"
+                expected: 0
+                observed: "{{ __fileserver_final_cluster_state__.register_all_providers_ip }}"
+              - name: 'cluster HostRecordTTL'
+                assertion: "{{ __fileserver_final_cluster_state__.host_record_ttl == 300 }}"
+                expected: 300
+                observed: "{{ __fileserver_final_cluster_state__.host_record_ttl }}"
+              - name: 'cluster StatusDNS'
+                assertion: "{{ __fileserver_final_cluster_state__.status_dns == 0 }}"
+                expected: 0
+                observed: "{{ __fileserver_final_cluster_state__.status_dns }}"
+              - name: 'cluster quorum type'
+                assertion: "{{ __fileserver_final_cluster_state__.quorum_type == 'NodeMajority' }}"
+                expected: 'NodeMajority'
+                observed: "{{ __fileserver_final_cluster_state__.quorum_type }}"
+              - name: 'declared shared disk count'
+                assertion: "{{ __fileserver_final_disks__.results | length == 2 }}"
+                expected: 2
+                observed: "{{ __fileserver_final_disks__.results | length }}"
+              - name: 'first declared disk cluster GUID'
+                assertion: "{{ __fileserver_final_disk_a__.disk_id_guid | length > 0 }}"
+                expected: 'non-empty'
+                observed: "{{ __fileserver_final_disk_a__.disk_id_guid }}"
+              - name: 'second declared disk cluster GUID'
+                assertion: "{{ __fileserver_final_disk_b__.disk_id_guid | length > 0 }}"
+                expected: 'non-empty'
+                observed: "{{ __fileserver_final_disk_b__.disk_id_guid }}"
+              - name: 'first declared disk state'
+                assertion: "{{ __fileserver_final_disk_a__.state == 'Online' }}"
+                expected: 'Online'
+                observed: "{{ __fileserver_final_disk_a__.state }}"
+              - name: 'second declared disk state'
+                assertion: "{{ __fileserver_final_disk_b__.state == 'Online' }}"
+                expected: 'Online'
+                observed: "{{ __fileserver_final_disk_b__.state }}"
+              - name: 'first declared disk possible owners'
+                assertion: >-
+                  {{ __fileserver_final_disk_a__.possible_owners | sort
+                     == __fileserver_declared_disk_a__.owners | sort }}
+                expected: "{{ __fileserver_declared_disk_a__.owners | sort }}"
+                observed: "{{ __fileserver_final_disk_a__.possible_owners | sort }}"
+              - name: 'second declared disk possible owners'
+                assertion: >-
+                  {{ __fileserver_final_disk_b__.possible_owners | sort
+                     == __fileserver_declared_disk_b__.owners | sort }}
+                expected: "{{ __fileserver_declared_disk_b__.owners | sort }}"
+                observed: "{{ __fileserver_final_disk_b__.possible_owners | sort }}"
+              - name: 'file-server home disk count'
+                assertion: >-
+                  {{ __fileserver_resolved_shared_disks__
+                     | selectattr('fileserver_home', 'equalto', true) | list | length == 1 }}
+                expected: 1
+                observed: >-
+                  {{ __fileserver_resolved_shared_disks__
+                     | selectattr('fileserver_home', 'equalto', true) | list | length }}
+              - name: 'physical disk resources in the file-server role'
+                assertion: >-
+                  {{ __fileserver_final_role_disk_names__
+                     == [__fileserver_final_home_disk__.resource_name] }}
+                expected: "{{ [__fileserver_final_home_disk__.resource_name] }}"
+                observed: "{{ __fileserver_final_role_disk_names__ }}"
+              - name: 'file-server home disk state'
+                assertion: "{{ __fileserver_final_home_disk__.state == 'Online' }}"
+                expected: 'Online'
+                observed: "{{ __fileserver_final_home_disk__.state }}"
+              - name: 'away disk owner group'
+                assertion: "{{ __fileserver_final_away_disk__.owner_group == 'Available Storage' }}"
+                expected: 'Available Storage'
+                observed: "{{ __fileserver_final_away_disk__.owner_group }}"
+              - name: 'file-server role count'
+                assertion: "{{ __fileserver_final_cluster_state__.role_count == 1 }}"
+                expected: 1
+                observed: "{{ __fileserver_final_cluster_state__.role_count }}"
+              - name: 'file-server role name'
+                assertion: "{{ __fileserver_final_cluster_state__.role.name == 'TCNAW-HAFS01' }}"
+                expected: 'TCNAW-HAFS01'
+                observed: "{{ __fileserver_final_cluster_state__.role.name }}"
+              - name: 'file-server role state'
+                assertion: "{{ __fileserver_final_cluster_state__.role.state == 'Online' }}"
+                expected: 'Online'
+                observed: "{{ __fileserver_final_cluster_state__.role.state }}"
+              - name: 'file-server role StatusDNS'
+                assertion: "{{ __fileserver_final_cluster_state__.role.status_dns == 0 }}"
+                expected: 0
+                observed: "{{ __fileserver_final_cluster_state__.role.status_dns }}"
+              - name: 'file-server role preferred owners'
+                assertion: >-
+                  {{ __fileserver_final_cluster_state__.role.preferred_owners
+                     == __fileserver_home_disk__.owners }}
+                expected: "{{ __fileserver_home_disk__.owners }}"
+                observed: "{{ __fileserver_final_cluster_state__.role.preferred_owners }}"
+              - name: 'file-server role IP resource count'
+                assertion: "{{ __fileserver_final_role_ips__ | length == 2 }}"
+                expected: 2
+                observed: "{{ __fileserver_final_role_ips__ | length }}"
+              - name: 'file-server role IP addresses'
+                assertion: >-
+                  {{ __fileserver_final_role_ips__ | map(attribute='address') | list | sort
+                     == fileserver_running.cluster.file_server.static_addresses | sort }}
+                expected: "{{ fileserver_running.cluster.file_server.static_addresses | sort }}"
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | map(attribute='address') | list | sort }}
+              - name: 'file-server role IP resources using DHCP'
+                assertion: >-
+                  {{ __fileserver_final_role_ips__
+                     | rejectattr('enable_dhcp', 'equalto', 0) | list | length == 0 }}
+                expected: []
+                observed: >-
+                  {{ __fileserver_final_role_ips__
+                     | rejectattr('enable_dhcp', 'equalto', 0)
+                     | map(attribute='address') | list }}
+              - name: 'online file-server role IP resource count'
+                assertion: >-
+                  {{ __fileserver_final_role_ips__
+                     | selectattr('state', 'equalto', 'Online') | list | length == 1 }}
+                expected: 1
+                observed: >-
+                  {{ __fileserver_final_role_ips__
+                     | selectattr('state', 'equalto', 'Online') | list | length }}
+              - name: '10.0.1.12 cluster network address'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                      | map(attribute='network_address') | list | first) == '10.0.0.0' }}
+                expected: '10.0.0.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                     | map(attribute='network_address') | list | first }}
+              - name: '10.0.1.12 subnet mask'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                      | map(attribute='subnet_mask') | list | first) == '255.255.224.0' }}
+                expected: '255.255.224.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                     | map(attribute='subnet_mask') | list | first }}
+              - name: '10.0.1.12 cluster network mask'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                      | map(attribute='network_address_mask') | list | first) == '255.255.224.0' }}
+                expected: '255.255.224.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
+                     | map(attribute='network_address_mask') | list | first }}
+              - name: '10.0.33.12 cluster network address'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                      | map(attribute='network_address') | list | first) == '10.0.32.0' }}
+                expected: '10.0.32.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                     | map(attribute='network_address') | list | first }}
+              - name: '10.0.33.12 subnet mask'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                      | map(attribute='subnet_mask') | list | first) == '255.255.224.0' }}
+                expected: '255.255.224.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                     | map(attribute='subnet_mask') | list | first }}
+              - name: '10.0.33.12 cluster network mask'
+                assertion: >-
+                  {{ (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                      | map(attribute='network_address_mask') | list | first) == '255.255.224.0' }}
+                expected: '255.255.224.0'
+                observed: >-
+                  {{ __fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
+                     | map(attribute='network_address_mask') | list | first }}
+              - name: 'file-server role dependency expression'
+                assertion: >-
+                  {{ __fileserver_final_cluster_state__.role.dependency
+                     == __fileserver_final_cluster_state__.role.expected_dependency }}
+                expected: "{{ __fileserver_final_cluster_state__.role.expected_dependency }}"
+                observed: "{{ __fileserver_final_cluster_state__.role.dependency }}"
+              - name: 'clustered share name'
+                assertion: "{{ __fileserver_final_share_state__.name == 'data' }}"
+                expected: 'data'
+                observed: "{{ __fileserver_final_share_state__.name }}"
+              - name: 'clustered share scope name'
+                assertion: "{{ __fileserver_final_share_state__.scope_name == 'TCNAW-HAFS01' }}"
+                expected: 'TCNAW-HAFS01'
+                observed: "{{ __fileserver_final_share_state__.scope_name }}"
+              - name: 'clustered share path'
+                assertion: "{{ __fileserver_final_share_state__.path == 'D:\\shares\\data' }}"
+                expected: 'D:\shares\data'
+                observed: "{{ __fileserver_final_share_state__.path }}"
+              - name: 'clustered share description'
+                assertion: >-
+                  {{ __fileserver_final_share_state__.description
+                     == 'Highly available file data' }}
+                expected: 'Highly available file data'
+                observed: "{{ __fileserver_final_share_state__.description }}"
+              - name: 'clustered share continuous availability'
+                assertion: "{{ __fileserver_final_share_state__.continuously_available }}"
+                expected: true
+                observed: "{{ __fileserver_final_share_state__.continuously_available }}"
+              - name: 'clustered share encryption'
+                assertion: >-
+                  {{ __fileserver_final_share_state__.encrypt_data
+                     == fileserver_running.smb.settings.EncryptData }}
+                expected: "{{ fileserver_running.smb.settings.EncryptData }}"
+                observed: "{{ __fileserver_final_share_state__.encrypt_data }}"
+              - name: 'clustered share folder enumeration mode'
+                assertion: >-
+                  {{ __fileserver_final_share_state__.folder_enumeration_mode == 'AccessBased' }}
+                expected: 'AccessBased'
+                observed: "{{ __fileserver_final_share_state__.folder_enumeration_mode }}"
+              - name: 'clustered share caching mode'
+                assertion: "{{ __fileserver_final_share_state__.caching_mode == 'None' }}"
+                expected: 'None'
+                observed: "{{ __fileserver_final_share_state__.caching_mode }}"
+              - name: 'clustered share DACL protection'
+                assertion: "{{ __fileserver_final_share_state__.dacl_protected }}"
+                expected: true
+                observed: "{{ __fileserver_final_share_state__.dacl_protected }}"
+              - name: 'clustered share inherited ACE count'
+                assertion: "{{ __fileserver_final_share_state__.inherited_count == 0 }}"
+                expected: 0
+                observed: "{{ __fileserver_final_share_state__.inherited_count }}"
+              - name: 'clustered share NTFS ACEs'
+                assertion: >-
+                  {{ __fileserver_final_share_state__.current_ntfs | sort
+                     == __fileserver_final_share_state__.desired_ntfs | sort }}
+                expected: "{{ __fileserver_final_share_state__.desired_ntfs | sort }}"
+                observed: "{{ __fileserver_final_share_state__.current_ntfs | sort }}"
+              - name: 'clustered share access entries'
+                assertion: >-
+                  {{ __fileserver_final_share_state__.current_share_access | sort
+                     == __fileserver_final_share_state__.desired_share_access | sort }}
+                expected: "{{ __fileserver_final_share_state__.desired_share_access | sort }}"
+                observed: "{{ __fileserver_final_share_state__.current_share_access | sort }}"
+              - name: 'clustered SMB path accessibility'
+                assertion: "{{ __fileserver_final_smb__.output[0].accessible }}"
+                expected: true
+                observed: "{{ __fileserver_final_smb__.output[0].accessible }}"
+          loop: "{{ __fileserver_final_comparisons__ }}"
+          loop_control:
+            label: "{{ comparison.name }}"
+            loop_var: 'comparison'
+          ansible.builtin.assert:
+            that: [ comparison.assertion ]
+            fail_msg: >-
+              {{ comparison.name }} mismatch: expected
+              {{ comparison.expected | to_json }}; observed
+              {{ comparison.observed | to_json }}.
+            quiet: true
+
+        - name: 'END | Assert The First Declared Disk Serial'
+          vars:
+            __fileserver_declared_disk_a__: "{{ __fileserver_resolved_shared_disks__[0] }}"
+            __fileserver_final_disk_a__: "{{ __fileserver_final_disks__.results[0].output[0] }}"
+            __fileserver_final_disk_a_serial__: >-
+              {{ __fileserver_final_disk_a__.observed_unique_id | lower
+                 | regex_replace('[^0-9a-z]', '') }}
           ansible.builtin.assert:
             that:
-              - __fileserver_final_cluster_state__.nodes | length == 4
-              - >-
-                __fileserver_final_cluster_state__.nodes | map(attribute='name') | list | sort
-                == fileserver_running.cluster.nodes | sort
-              - >-
-                __fileserver_final_cluster_state__.nodes
-                | rejectattr('state', 'equalto', 'Up') | list | length == 0
-              - __fileserver_final_cluster_state__.register_all_providers_ip == 0
-              - __fileserver_final_cluster_state__.host_record_ttl == 300
-              - __fileserver_final_cluster_state__.status_dns == 0
-              - __fileserver_final_cluster_state__.quorum_type == 'NodeMajority'
-              - __fileserver_final_disks__.results | length == 2
-              - >-
-                __fileserver_declared_disk_a__.expected_serial
-                in (__fileserver_final_disk_a__.observed_unique_id | lower
-                    | regex_replace('[^0-9a-z]', ''))
-              - >-
-                __fileserver_declared_disk_b__.expected_serial
-                in (__fileserver_final_disk_b__.observed_unique_id | lower
-                    | regex_replace('[^0-9a-z]', ''))
-              - __fileserver_final_disk_a__.disk_id_guid | length > 0
-              - __fileserver_final_disk_b__.disk_id_guid | length > 0
-              - __fileserver_final_disk_a__.state == 'Online'
-              - __fileserver_final_disk_b__.state == 'Online'
-              - __fileserver_final_disk_a__.possible_owners | sort == __fileserver_declared_disk_a__.owners | sort
-              - __fileserver_final_disk_b__.possible_owners | sort == __fileserver_declared_disk_b__.owners | sort
-              - >-
-                __fileserver_resolved_shared_disks__
-                | selectattr('fileserver_home', 'equalto', true) | list | length == 1
-              - >-
-                __fileserver_final_cluster_state__.role.resources
-                | selectattr('type', 'equalto', 'Physical Disk')
-                | map(attribute='name') | list == [__fileserver_final_home_disk__.resource_name]
-              - __fileserver_final_home_disk__.state == 'Online'
-              - __fileserver_final_away_disk__.owner_group == 'Available Storage'
-              - >-
-                __fileserver_final_away_disk__.resource_name not in
-                (__fileserver_final_cluster_state__.role.resources | map(attribute='name') | list)
-              - __fileserver_final_cluster_state__.role_count == 1
-              - __fileserver_final_cluster_state__.role.name == 'TCNAW-HAFS01'
-              - __fileserver_final_cluster_state__.role.state == 'Online'
-              - __fileserver_final_cluster_state__.role.status_dns == 0
-              - __fileserver_final_cluster_state__.role.owner_node in __fileserver_home_disk__.owners
-              - __fileserver_final_cluster_state__.role.preferred_owners == __fileserver_home_disk__.owners
-              - __fileserver_final_role_ips__ | length == 2
-              - >-
-                __fileserver_final_role_ips__ | map(attribute='address') | list | sort
-                == fileserver_running.cluster.file_server.static_addresses | sort
-              - >-
-                __fileserver_final_role_ips__
-                | rejectattr('enable_dhcp', 'equalto', 0) | list | length == 0
-              - >-
-                __fileserver_final_role_ips__
-                | selectattr('state', 'equalto', 'Online') | list | length == 1
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='network_address') | list | first) == '10.0.0.0'
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='subnet_mask') | list | first) == '255.255.224.0'
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.1.12')
-                 | map(attribute='network_address_mask') | list | first) == '255.255.224.0'
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='network_address') | list | first) == '10.0.32.0'
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='subnet_mask') | list | first) == '255.255.224.0'
-              - >-
-                (__fileserver_final_role_ips__ | selectattr('address', 'equalto', '10.0.33.12')
-                 | map(attribute='network_address_mask') | list | first) == '255.255.224.0'
-              - >-
-                __fileserver_final_cluster_state__.role.dependency
-                == __fileserver_final_cluster_state__.role.expected_dependency
-              - __fileserver_final_share_state__.name == 'data'
-              - __fileserver_final_share_state__.scope_name == 'TCNAW-HAFS01'
-              - __fileserver_final_share_state__.path == 'D:\shares\data'
-              - __fileserver_final_share_state__.description == 'Highly available file data'
-              - __fileserver_final_share_state__.continuously_available
-              - >-
-                __fileserver_final_share_state__.encrypt_data
-                == fileserver_running.smb.settings.EncryptData
-              - __fileserver_final_share_state__.folder_enumeration_mode == 'AccessBased'
-              - __fileserver_final_share_state__.caching_mode == 'None'
-              - __fileserver_final_share_state__.dacl_protected
-              - __fileserver_final_share_state__.inherited_count == 0
-              - >-
-                __fileserver_final_share_state__.current_ntfs | sort
-                == __fileserver_final_share_state__.desired_ntfs | sort
-              - >-
-                __fileserver_final_share_state__.current_share_access | sort
-                == __fileserver_final_share_state__.desired_share_access | sort
-              - __fileserver_final_smb__.output[0].accessible
+              - __fileserver_declared_disk_a__.expected_serial
+                in __fileserver_final_disk_a_serial__
             fail_msg: >-
-              The ungated file-server readback did not match the declared implemented state.
-              Cluster={{ __fileserver_final_cluster__.output | default([]) }};
-              disks={{ __fileserver_final_disks__.results | map(attribute='output') | list }};
-              share={{ __fileserver_final_share__.output | default([]) }};
-              SMB={{ __fileserver_final_smb__.output | default([]) }}.
+              First declared disk serial mismatch: expected unique ID containing
+              {{ __fileserver_declared_disk_a__.expected_serial | to_json }}; observed
+              {{ __fileserver_final_disk_a_serial__ | to_json }}.
+            quiet: true
+
+        - name: 'END | Assert The Second Declared Disk Serial'
+          vars:
+            __fileserver_declared_disk_b__: "{{ __fileserver_resolved_shared_disks__[1] }}"
+            __fileserver_final_disk_b__: "{{ __fileserver_final_disks__.results[1].output[0] }}"
+            __fileserver_final_disk_b_serial__: >-
+              {{ __fileserver_final_disk_b__.observed_unique_id | lower
+                 | regex_replace('[^0-9a-z]', '') }}
+          ansible.builtin.assert:
+            that:
+              - __fileserver_declared_disk_b__.expected_serial
+                in __fileserver_final_disk_b_serial__
+            fail_msg: >-
+              Second declared disk serial mismatch: expected unique ID containing
+              {{ __fileserver_declared_disk_b__.expected_serial | to_json }}; observed
+              {{ __fileserver_final_disk_b_serial__ | to_json }}.
+            quiet: true
+
+        - name: 'END | Assert The File Server Role Owner'
+          vars:
+            __fileserver_final_cluster_state__: "{{ __fileserver_final_cluster__.output[0] }}"
+            __fileserver_home_disk__: >-
+              {{ __fileserver_resolved_shared_disks__
+                 | selectattr('fileserver_home', 'equalto', true) | list | first }}
+          ansible.builtin.assert:
+            that:
+              - __fileserver_final_cluster_state__.role.owner_node
+                in __fileserver_home_disk__.owners
+            fail_msg: >-
+              File-server role owner mismatch: expected one of
+              {{ __fileserver_home_disk__.owners | to_json }}; observed
+              {{ __fileserver_final_cluster_state__.role.owner_node | to_json }}.
+            quiet: true
+
+        - name: 'END | Assert The Away Disk Is Outside The File Server Role'
+          vars:
+            __fileserver_final_cluster_state__: "{{ __fileserver_final_cluster__.output[0] }}"
+            __fileserver_final_disk_a__: "{{ __fileserver_final_disks__.results[0].output[0] }}"
+            __fileserver_final_disk_b__: "{{ __fileserver_final_disks__.results[1].output[0] }}"
+            __fileserver_final_away_disk__: >-
+              {{ __fileserver_final_disk_b__
+                 if __fileserver_final_disk_a__.fileserver_home
+                 else __fileserver_final_disk_a__ }}
+            __fileserver_final_role_resource_names__: >-
+              {{ __fileserver_final_cluster_state__.role.resources
+                 | map(attribute='name') | list }}
+          ansible.builtin.assert:
+            that:
+              - __fileserver_final_away_disk__.resource_name
+                not in __fileserver_final_role_resource_names__
+            fail_msg: >-
+              Away disk role membership mismatch: expected
+              {{ __fileserver_final_away_disk__.resource_name | to_json }} absent; observed
+              file-server role resources {{ __fileserver_final_role_resource_names__ | to_json }}.
             quiet: true
 
         - name: 'END | Report The Implemented And Deferred File Server State'
