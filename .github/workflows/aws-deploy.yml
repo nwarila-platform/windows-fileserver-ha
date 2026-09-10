@@ -18,10 +18,10 @@
 #   * AWS credentials are exchanged before provisioning and refreshed before eligible teardown.
 #     The initial 7,800-second session covers normal deployment work; the teardown refresh uses a
 #     modest 3,600-second session so long holds do not reach destroy with expired credentials.
-#     The 330-minute job budget includes a four-hour hold plus measured-path margin and stays below
-#     the runner's 360-minute execution limit. It is not a teardown guarantee: abnormal delay can
-#     exhaust the job budget before destroy and strand paid resources. That risk is accepted for
-#     this temporary proof bed.
+#     The 330-minute job budget includes a bed-only four-hour hold plus measured-path margin and
+#     stays below the runner's 360-minute execution limit. It is not a teardown guarantee: abnormal
+#     delay can exhaust the job budget before destroy and strand paid resources. That risk is
+#     accepted for this temporary proof bed.
 #   * One fixed state key; this workflow's concurrency group prevents overlapping applies and
 #     never cancels a live lifecycle. A later lifecycle can clean predecessor state before apply;
 #     no age-gated reaper exists for a run killed before destroy.
@@ -82,8 +82,9 @@ jobs:
     needs: main-ref
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    # The 330-minute budget leaves measured-path margin around a 240-minute hold and remains below
-    # the runner's 360-minute execution limit; a timeout can still strand resources before teardown.
+    # The 330-minute budget reserves 30 minutes for setup, 120 for converge and 15 for teardown.
+    # A converging hold is limited to the largest listed duration that fits; a bed-only dispatch
+    # retains the full 240-minute hold. The runner's execution limit is 360 minutes.
     timeout-minutes: 330
     permissions:
       id-token: write
@@ -106,13 +107,61 @@ jobs:
           HOLD_MINUTES: ${{ inputs.hold_minutes }}
         run: |
           set -euo pipefail
-          case "${HOLD_MINUTES}" in
-            0|15|60|120|240) ;;
-            *)
-              echo "::error::hold_minutes must be one of 0, 15, 60, 120, or 240; re-dispatch with a listed choice."
+          workflow="${GITHUB_WORKSPACE}/.github/workflows/aws-deploy.yml"
+          read_step_timeout() {
+            local step_name="$1"
+            awk -v step_name="${step_name}" '
+              $0 == "      - name: " step_name { in_step = 1; next }
+              in_step && /^      - name:/ { exit }
+              in_step && /^        timeout-minutes: [0-9]+$/ { print $2; exit }
+            ' "${workflow}"
+          }
+
+          job_budget_minutes="$(awk '
+            $0 == "  aws-deploy:" { in_job = 1; next }
+            in_job && /^  [[:alnum:]_-]+:/ { exit }
+            in_job && /^    timeout-minutes: [0-9]+$/ { print $2; exit }
+          ' "${workflow}")"
+          predecessor_minutes="$(read_step_timeout 'Remove interrupted predecessor state before apply')"
+          apply_minutes="$(read_step_timeout 'Terraform apply')"
+          playbook_minutes="$(read_step_timeout 'Run the application playbook')"
+          teardown_minutes="$(read_step_timeout 'Terraform destroy (always)')"
+
+          budget_values=(
+            "${job_budget_minutes}"
+            "${predecessor_minutes}"
+            "${apply_minutes}"
+            "${playbook_minutes}"
+            "${teardown_minutes}"
+          )
+          for budget_value in "${budget_values[@]}"; do
+            if [[ ! "${budget_value}" =~ ^[0-9]+$ ]]; then
+              echo "::error::Could not read the deployment timeout budget from ${workflow}."
               exit 1
-              ;;
-          esac
+            fi
+          done
+
+          setup_minutes=$((predecessor_minutes + apply_minutes))
+          hold_budget_minutes=$((job_budget_minutes - setup_minutes - playbook_minutes - teardown_minutes))
+          valid_hold=false
+          maximum_converging_hold=0
+          for allowed_hold in 0 15 60 120 240; do
+            if [ "${HOLD_MINUTES}" = "${allowed_hold}" ]; then
+              valid_hold=true
+            fi
+            if (( allowed_hold <= hold_budget_minutes )); then
+              maximum_converging_hold="${allowed_hold}"
+            fi
+          done
+          if [ "${valid_hold}" != true ]; then
+            echo "::error::hold_minutes must be one of 0, 15, 60, 120, or 240; re-dispatch with a listed choice."
+            exit 1
+          fi
+          if [ "${CONVERGED}" = true ] && (( HOLD_MINUTES > maximum_converging_hold )); then
+            requested_total=$((setup_minutes + playbook_minutes + HOLD_MINUTES + teardown_minutes))
+            echo "::error::Requested hold_minutes is ${HOLD_MINUTES}; the maximum permitted for a converging run is ${maximum_converging_hold}. Setup (${setup_minutes}) + playbook (${playbook_minutes}) + hold (${HOLD_MINUTES}) + teardown (${teardown_minutes}) requires ${requested_total} minutes, exceeding the ${job_budget_minutes}-minute job budget. Re-dispatch with converge=false for the full bed-only hold or choose a shorter listed hold."
+            exit 1
+          fi
 
       - name: Set up pinned Python
         uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
@@ -361,7 +410,7 @@ jobs:
       # one target. The budget guards against a hung converge without cutting a working one short.
       - name: Run the application playbook
         if: env.CONVERGED == 'true'
-        timeout-minutes: 60
+        timeout-minutes: 120
         working-directory: .frameworks/ansible-framework
         env:
           ANSIBLE_CONFIG: ${{ github.workspace }}/.frameworks/ansible-framework/ansible.cfg
