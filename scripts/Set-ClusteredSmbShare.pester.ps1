@@ -185,6 +185,23 @@ Describe 'Set-ClusteredSmbShare' {
     $global:FsHaShareWrites | Should -HaveCount 0
   }
 
+  It 'treats persisted Synchronize on a declared Modify ACE as exact' {
+    $global:FsHaShareAcl.Access[2] = New-FakeRule -Principal 'TCN\Domain Users' -Rights 'Modify, Synchronize'
+    $Result = & $script:ScriptPath @script:Common -Mode DirectoryAcl | ConvertFrom-Json
+    $Result.after.exact | Should -BeTrue
+    $Result.changed | Should -BeFalse
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'rejects rights beyond declared Modify and persisted Synchronize' {
+    $global:FsHaShareAcl.Access[2] = New-FakeRule -Principal 'TCN\Domain Users' -Rights 'Modify, Synchronize, TakeOwnership'
+    $Context = New-AnsibleContext -CheckMode
+    & $script:ScriptPath @script:Common -Mode DirectoryAcl | Out-Null
+    $Context.Result.after.exact | Should -BeFalse
+    $Context.Changed | Should -BeTrue
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
   It 'replaces a wholesale stale DACL with the exact protected set' {
     $global:FsHaShareAcl = New-FakeAcl -Protected $False -Access @(
       $(New-FakeRule -Principal 'Everyone' -Rights 'FullControl' -Type 'Deny')
@@ -200,7 +217,15 @@ Describe 'Set-ClusteredSmbShare' {
   It 'fails DACL readback when Set-Acl does not land' {
     $global:FsHaShareAcl = New-FakeAcl -Protected $False -Access @()
     $global:FsHaShareFrozen = $True
-    { & $script:ScriptPath @script:Common -Mode DirectoryAcl } | Should -Throw '*failed exact readback*'
+    { & $script:ScriptPath @script:Common -Mode DirectoryAcl } | Should -Throw '*DACL protection expected True but was False*'
+  }
+
+  It 'reports both sides of a DACL set disagreement' {
+    $global:FsHaShareAcl = New-FakeAcl -Protected $True -Access @(
+      $(New-FakeRule -Principal 'Everyone' -Rights 'FullControl')
+    )
+    $global:FsHaShareFrozen = $True
+    { & $script:ScriptPath @script:Common -Mode DirectoryAcl } | Should -Throw '*DACL ACE set mismatch: entries present but not desired:*S-1-1-0|Allow|FullControl*entries desired but not present:*S-1-5-18|Allow|FullControl*'
   }
 
   It 'predicts DirectoryAcl check mode with no filesystem writes' {
@@ -298,7 +323,7 @@ Describe 'Set-ClusteredSmbShare' {
   It 'fails share readback when mutations do not land' {
     $global:FsHaShareObject.Description = 'old'
     $global:FsHaShareFrozen = $True
-    { & $script:ScriptPath @script:Common -Mode Share } | Should -Throw '*failed exact readback*'
+    { & $script:ScriptPath @script:Common -Mode Share } | Should -Throw '*description expected "Highly available file data" but was "old"*'
   }
 
   It 'predicts Share check mode with zero SMB writes' {
