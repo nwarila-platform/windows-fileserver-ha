@@ -15,15 +15,29 @@
   ansible.builtin.assert:
     that:
       - fileserver_ad_config_running is mapping
+      - fileserver_ad_config_running.fresh_deployment | default(none) is boolean
       - fileserver_ad_config_running.service_account | default(none) is mapping
       - fileserver_ad_config_running.cluster | default(none) is mapping
       - fileserver_ad_config_running.file_server | default(none) is mapping
       - fileserver_ad_config_running.nodes | default(none) is mapping
       - fileserver_ad_config_running.nodes | default({}, true) | length > 0
     fail_msg: >-
-      Refusing to run: fileserver_ad_config must be a map containing service_account, cluster,
-      file_server, and nodes maps. A caller override probably replaced one of the role's
-      defaulted maps with a scalar or list.
+      Refusing to run: fileserver_ad_config must contain a boolean fresh_deployment value and
+      service_account, cluster, file_server, and non-empty nodes maps. Observed
+      fresh_deployment value is
+      {{ fileserver_ad_config_running.fresh_deployment | default(none) | to_json }};
+      its type is
+      {{ fileserver_ad_config_running.fresh_deployment | default(none) | type_debug }}.
+      Observed mapping types are:
+      fileserver_ad_config={{ fileserver_ad_config_running | type_debug }};
+      service_account={{ fileserver_ad_config_running.service_account | default(none)
+      | type_debug }};
+      cluster={{ fileserver_ad_config_running.cluster | default(none) | type_debug }};
+      file_server={{ fileserver_ad_config_running.file_server | default(none) | type_debug }};
+      nodes={{ fileserver_ad_config_running.nodes | default(none) | type_debug }}.
+      Restore the mappings. Set fresh_deployment to true for a first deployment onto clean AD
+      only after confirming no live cluster owns the existing AD computer objects; set it to
+      false otherwise.
     quiet: true
 
 - name: 'VALIDATE | Require The Directory Account And Computer Object Inputs'

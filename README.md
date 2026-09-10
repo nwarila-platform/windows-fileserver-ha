@@ -1,7 +1,7 @@
 # windows-fileserver-ha
 
 Target architecture: a four-node Windows Server 2025 WSFC stretch cluster across two
-Availability Zones, Storage Replica between per-AZ shared storage, and a workgroup file-share
+Availability Zones, Storage Replica between per-AZ shared storage, and a domain-joined file-share
 witness in a third AZ. The implemented service is deliberately narrower: one AZ-a clustered
 file-server role and its encrypted continuously available `data` share. This repository is a
 data-only consumer of the pinned nwarila-platform Terraform and Ansible frameworks.

@@ -29,9 +29,8 @@
       Setting: "{{ fileserver_running.smb.settings }}"
     error_action: 'stop'
 
-# The domain roles use a nodes-only play boundary because they serve only domain members. This
-# role serves both the nodes and the workgroup witness, so its cluster-only work needs a task
-# guard while the witness continues through the shared SMB baseline.
+# The role serves all five domain members, but only the four nodes join the cluster. Keep cluster
+# prerequisites node-scoped while the witness continues through the shared SMB baseline.
 - name: 'MAIN | Prepare The Cluster Nodes For Validation'
   when: inventory_hostname in (groups['fileserver_nodes'] | default([]))
   vars:
@@ -226,7 +225,7 @@
             msg: 'Restarting to apply the failover cluster prerequisites.'
             post_reboot_delay: 0
             pre_reboot_delay: 2
-            reboot_timeout: 600
+            reboot_timeout: 1200
 
         # A stale marker means an out-of-band restart already crossed the recorded boot boundary.
         # A current marker reaches this task only after win_reboot proved a different boot token.

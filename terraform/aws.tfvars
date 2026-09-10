@@ -1863,7 +1863,7 @@ all_systems = [
 
     associate_public_ip = false
   },
-  # The workgroup witness stands alone in the third Availability Zone.
+  # The domain-joined witness stands alone in the third Availability Zone.
   {
     region                     = "us_east_1"
     hostname                   = "tcnaw-witnes01c"
@@ -1910,14 +1910,23 @@ all_systems = [
         private_ip      = null
         security_groups = []
         ingress         = []
-        # No OpenVPN egress: this workgroup witness is deliberately not domain-joined and needs
-        # no route to a domain controller.
         egress = [
           {
             description                  = "HTTPS out"
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
+            cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
+          # than by address: the profile names its endpoint by DNS, and that address changes.
+          {
+            description                  = "OpenVPN tunnel out"
+            ip_protocol                  = "udp"
+            from_port                    = 1194
+            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
