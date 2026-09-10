@@ -116,12 +116,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB from tcnaw-hafs02a"
+            description                  = "Clustered SMB from private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB from private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -180,15 +192,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB from tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01b"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -238,15 +241,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB from tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -328,12 +322,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB to tcnaw-hafs02a"
+            description                  = "Clustered SMB to private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB to private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -392,15 +398,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB to tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01b"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -450,15 +447,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB to tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -572,12 +560,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB from tcnaw-hafs01a"
+            description                  = "Clustered SMB from private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB from private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -636,15 +636,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB from tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper from tcnaw-hafs01b"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -694,15 +685,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB from tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -784,12 +766,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB to tcnaw-hafs01a"
+            description                  = "Clustered SMB to private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB to private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -848,15 +842,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB to tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper to tcnaw-hafs01b"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -906,15 +891,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB to tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1027,12 +1003,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB from tcnaw-hafs01a"
+            description                  = "Clustered SMB from private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB from private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1091,15 +1079,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB from tcnaw-hafs02a"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02a"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -1149,15 +1128,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB from tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1239,12 +1209,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB to tcnaw-hafs01a"
+            description                  = "Clustered SMB to private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB to private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1303,15 +1285,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB to tcnaw-hafs02a"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02a"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -1361,15 +1334,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.97.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB to tcnaw-hafs02b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.97.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1482,12 +1446,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB from tcnaw-hafs01a"
+            description                  = "Clustered SMB from private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB from private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1546,15 +1522,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB from tcnaw-hafs02a"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper from tcnaw-hafs02a"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -1604,15 +1571,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB from tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.65.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1694,12 +1652,24 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
+          # SMB spans the VPC 10.0.0.0/16 and on-premises 10.69.0.0/16 because the domain
+          # controllers sit outside the VPC; the role's service addresses float between nodes on
+          # failover, so a host-specific rule cannot follow the share.
           {
-            description                  = "WSFC SMB to tcnaw-hafs01a"
+            description                  = "Clustered SMB to private networks"
             ip_protocol                  = "tcp"
             from_port                    = 445
             to_port                      = 445
-            cidr_ipv4                    = "10.0.1.10/32"
+            cidr_ipv4                    = "10.0.0.0/16"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Clustered SMB to private networks"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1758,15 +1728,6 @@ all_systems = [
             referenced_security_group_id = null
           },
           {
-            description                  = "WSFC SMB to tcnaw-hafs02a"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.0.33.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
             description                  = "WSFC RPC endpoint mapper to tcnaw-hafs02a"
             ip_protocol                  = "tcp"
             from_port                    = 135
@@ -1816,15 +1777,6 @@ all_systems = [
             ip_protocol                  = "udp"
             from_port                    = 137
             to_port                      = 137
-            cidr_ipv4                    = "10.0.65.10/32"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "WSFC SMB to tcnaw-hafs01b"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
             cidr_ipv4                    = "10.0.65.10/32"
             prefix_list_id               = null
             referenced_security_group_id = null
