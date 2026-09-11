@@ -204,6 +204,7 @@ BeforeAll {
       Replace('Exit $ExitCode', 'Write-Output -InputObject $ExitCode')
     Try {
       $Output = @(& ([System.Management.Automation.ScriptBlock]::Create($ExecutableCommand)))
+      If ($Output.Count -eq 0) { Throw 'Cluster mutation inner command returned no terminal exit code.' }
       [PSCustomObject]@{
         exit_code  = [System.Int32]$Output[-1]
         transcript = [System.String](Get-Content -LiteralPath $TranscriptPath -Raw)
@@ -377,10 +378,11 @@ Describe 'Set-FileServerCluster' {
     $InnerResult.exit_code | Should -Be 0
     $InnerCommand | Should -Match '\$PreScreenDeadlineSeconds = 300'
     $InnerCommand | Should -Match '\$PreScreenIntervalSeconds = 15'
-    $global:FsHaFormationProbeCalls.ComputerName | Should -Be $script:Nodes
-    $global:FsHaFormationProbeCalls.Class | Select-Object -Unique | Should -Be 'Win32_Service'
-    $global:FsHaFormationProbeCalls.Filter | Select-Object -Unique | Should -Be "Name='ClusSvc'"
-    $global:FsHaFormationProbeCalls.ErrorAction | Select-Object -Unique | Should -Be 'Stop'
+    $global:FsHaFormationProbeCalls | Should -HaveCount $script:Nodes.Count
+    @($global:FsHaFormationProbeCalls | ForEach-Object -Process { $PSItem.ComputerName }) | Should -Be $script:Nodes
+    @($global:FsHaFormationProbeCalls | ForEach-Object -Process { $PSItem.Class }) | Select-Object -Unique | Should -Be 'Win32_Service'
+    @($global:FsHaFormationProbeCalls | ForEach-Object -Process { $PSItem.Filter }) | Select-Object -Unique | Should -Be "Name='ClusSvc'"
+    @($global:FsHaFormationProbeCalls | ForEach-Object -Process { $PSItem.ErrorAction }) | Select-Object -Unique | Should -Be 'Stop'
     $global:FsHaFormationOperations | Should -Be @(
       @($script:Nodes | ForEach-Object -Process { 'Probe:{0}' -f $PSItem }) + 'New'
     )
@@ -394,8 +396,11 @@ Describe 'Set-FileServerCluster' {
     $InnerResult = Invoke-MutationInnerCommand -Command $InnerCommand -PreScreenDeadlineSeconds 10 -PreScreenIntervalSeconds 0
 
     $InnerResult.exit_code | Should -Be 0
-    $global:FsHaFormationProbeCalls.ComputerName | Should -Be @($script:Nodes + $script:Nodes)
-    $global:FsHaClusterWrites.Command | Should -Be @('New')
+    $global:FsHaFormationProbeCalls | Should -HaveCount 8
+    @($global:FsHaFormationProbeCalls | ForEach-Object -Process { $PSItem.ComputerName }) | Should -Be @($script:Nodes + $script:Nodes)
+    $global:FsHaClusterWrites | Should -HaveCount 1
+    @($global:FsHaClusterWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('New')
+    $global:FsHaFormationOperations | Should -HaveCount 9
     $global:FsHaFormationOperations[-1] | Should -Be 'New'
   }
 
@@ -409,7 +414,7 @@ Describe 'Set-FileServerCluster' {
     $InnerResult.exit_code | Should -Be 1
     $InnerResult.transcript | Should -Match ([System.Text.RegularExpressions.Regex]::Escape($ColdNode))
     $InnerResult.transcript | Should -Match 'last error: ClusSvc state is Running; expected Stopped'
-    $global:FsHaClusterWrites.Command | Should -Not -Contain 'New'
+    @($global:FsHaClusterWrites | Where-Object -FilterScript { $Null -ne $PSItem -and $PSItem.Command -eq 'New' }) | Should -HaveCount 0
     $global:FsHaFormationOperations | Should -Not -Contain 'New'
   }
 

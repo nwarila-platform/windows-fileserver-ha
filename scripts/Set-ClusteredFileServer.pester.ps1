@@ -416,6 +416,7 @@ BeforeAll {
         Replace('$PreScreenIntervalSeconds = 15', ('$PreScreenIntervalSeconds = {0}' -f $global:FsHaRolePreScreenIntervalSeconds)).
         Replace('Exit $ExitCode', 'Write-Output -InputObject $ExitCode')
       $Output = @(& ([System.Management.Automation.ScriptBlock]::Create($Executable)))
+      If ($Output.Count -eq 0) { Throw 'Scheduled role mutation returned no terminal exit code.' }
       $global:FsHaRoleTaskResult = [System.Int32]$Output[-1]
     }
     $global:FsHaRoleTaskLastRunTime = $global:FsHaRoleTaskLastRunTime.AddSeconds(1)
@@ -453,6 +454,7 @@ BeforeAll {
       Replace('Exit $ExitCode', 'Write-Output -InputObject $ExitCode')
     Try {
       $Output = @(& ([System.Management.Automation.ScriptBlock]::Create($ExecutableCommand)))
+      If ($Output.Count -eq 0) { Throw 'Role mutation inner command returned no terminal exit code.' }
       [PSCustomObject]@{
         exit_code  = [System.Int32]$Output[-1]
         transcript = [System.String](Get-Content -LiteralPath $TranscriptPath -Raw)
@@ -596,10 +598,10 @@ Describe 'Set-ClusteredFileServer' {
     @($Command.Parameters.Keys | Where-Object -FilterScript { $PSItem -in $ExpectedParameters } | Sort-Object) |
       Should -Be $ExpectedParameters
     $Command.Parameters['Owners'].ParameterType | Should -Be ([System.String[]])
-    $Command.Parameters['TimeoutSeconds'].Attributes.TypeId.Name | Should -Contain 'ValidateRangeAttribute'
+    @($Command.Parameters['TimeoutSeconds'].Attributes | ForEach-Object -Process { $PSItem.TypeId.Name }) | Should -Contain 'ValidateRangeAttribute'
     $Context = New-AnsibleContext
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    @($Context.Result.PSObject.Properties.Name) | Should -Be @('changed', 'check_mode', 'actions', 'before', 'after', 'msg')
+    @($Context.Result.PSObject.Properties | ForEach-Object -Process { $PSItem.Name }) | Should -Be @('changed', 'check_mode', 'actions', 'before', 'after', 'msg')
     $Context.Result.msg | Should -Be 'Clustered file-server role already matches.'
   }
 
@@ -611,6 +613,7 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleTaskActionArgument | Should -Match '-ExecutionPolicy Bypass -File "[^"]+\\mutation\.ps1"$|-ExecutionPolicy Bypass -File "[^"]+/mutation\.ps1"$'
     [System.IO.Path]::IsPathRooted($global:FsHaRolePayloadPath) | Should -BeTrue
     $global:FsHaRolePayloadPath | Should -Match '[\\/]Temp[\\/][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[\\/]mutation\.ps1$'
+    $global:FsHaRoleTaskRegistrations | Should -HaveCount 1
     $global:FsHaRoleTaskRegistrations[0].AclWriteCount | Should -Be 2
   }
 
@@ -792,7 +795,8 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleResources[0].State = 'Offline'
     $global:FsHaAvailableStorageGroup.OwnerNode = 'tcnaw-hafs01b'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
+    $global:FsHaRoleWrites | Should -HaveCount 11
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
     $global:FsHaRoleWrites[0].InputObject | Should -Be $global:FsHaAvailableStorageGroup
     $global:FsHaRoleWrites[0].Node | Should -Be $script:Owners[0]
     $global:FsHaRoleWrites[0].Wait | Should -Be 600
@@ -835,9 +839,11 @@ Describe 'Set-ClusteredFileServer' {
 
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
 
-    $global:FsHaRoleProbeCalls.ComputerName | Should -Be @($NodeNames + $NodeNames)
-    $global:FsHaRoleProbeCalls.Class | Select-Object -Unique | Should -Be 'Win32_ComputerSystem'
-    $global:FsHaRoleProbeCalls.ErrorAction | Select-Object -Unique | Should -Be 'Stop'
+    $global:FsHaRoleProbeCalls | Should -HaveCount 8
+    @($global:FsHaRoleProbeCalls | ForEach-Object -Process { $PSItem.ComputerName }) | Should -Be @($NodeNames + $NodeNames)
+    @($global:FsHaRoleProbeCalls | ForEach-Object -Process { $PSItem.Class }) | Select-Object -Unique | Should -Be 'Win32_ComputerSystem'
+    @($global:FsHaRoleProbeCalls | ForEach-Object -Process { $PSItem.ErrorAction }) | Select-Object -Unique | Should -Be 'Stop'
+    $global:FsHaRoleOperations | Should -HaveCount 9
     $global:FsHaRoleOperations[-1] | Should -Be 'Create'
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'Create' }) | Should -HaveCount 1
 
@@ -855,8 +861,9 @@ Describe 'Set-ClusteredFileServer' {
     $InnerResult.exit_code | Should -Be 1
     $InnerResult.transcript | Should -Match ([System.Text.RegularExpressions.Regex]::Escape($ColdNode))
     $InnerResult.transcript | Should -Match 'last error: Readiness probe failed'
-    $global:FsHaRoleProbeCalls.ComputerName | Should -Be $NodeNames
-    $global:FsHaRoleWrites.Command | Should -Not -Contain 'Create'
+    $global:FsHaRoleProbeCalls | Should -HaveCount 4
+    @($global:FsHaRoleProbeCalls | ForEach-Object -Process { $PSItem.ComputerName }) | Should -Be $NodeNames
+    @($global:FsHaRoleWrites | Where-Object -FilterScript { $Null -ne $PSItem -and $PSItem.Command -eq 'Create' }) | Should -HaveCount 0
     $global:FsHaRoleOperations | Should -Not -Contain 'Create'
   }
 
@@ -889,7 +896,8 @@ Describe 'Set-ClusteredFileServer' {
     $Create = @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'Create' })
     $Create | Should -HaveCount 1
     $Create[0].IgnoreNetwork | Should -BeNullOrEmpty
-    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
+    $global:FsHaRoleWrites | Should -HaveCount 11
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
   }
 
   It 'D5-IGNORE-NETWORK-MOCK rejects a cluster network name before any write' {
@@ -912,7 +920,8 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleWrites = @()
     $InnerResult = Invoke-RoleMutationInner -Command $global:FsHaRoleInnerCommand
     $InnerResult.exit_code | Should -Be 0
-    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
+    $global:FsHaRoleWrites | Should -HaveCount 11
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('MoveAvailable', 'StartDisk', 'Create', 'Owners', 'StopGroup', 'RemoveIp', 'RemoveIp', 'Dependency', 'StartGroup', 'MoveAvailable', 'StartDisk')
   }
 
   It 'blocks role creation when starting the exact home disk does not land' {
@@ -926,8 +935,9 @@ Describe 'Set-ClusteredFileServer' {
     { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password } |
       Should -Throw '*failed Online readback*'
 
-    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk')
-    $global:FsHaRoleWrites.Command | Should -Not -Contain 'Create'
+    $global:FsHaRoleWrites | Should -HaveCount 2
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('MoveAvailable', 'StartDisk')
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Not -Contain 'Create'
     $global:FsHaRoleWrites[1].Name | Should -Be 'Cluster Disk 9'
     $InnerResult = Invoke-RoleMutationInner -Command $global:FsHaRoleInnerCommand
     $InnerResult.exit_code | Should -Be 1
@@ -957,13 +967,15 @@ Describe 'Set-ClusteredFileServer' {
   It 'corrects preferred-owner drift without bouncing the group' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('Owners')
+    $global:FsHaRoleWrites | Should -HaveCount 1
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('Owners')
   }
 
   It 'moves the exact home disk from Available Storage' {
     $global:FsHaRoleResources[0].OwnerGroup = 'Available Storage'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('Move')
+    $global:FsHaRoleWrites | Should -HaveCount 1
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('Move')
   }
 
   It 'moves and starts only a remaining disk mismatched with the Available Storage owner' {
@@ -977,7 +989,8 @@ Describe 'Set-ClusteredFileServer' {
 
     $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | ConvertFrom-Json
 
-    $global:FsHaRoleWrites.Command | Should -Be @('MoveAvailable', 'StartDisk')
+    $global:FsHaRoleWrites | Should -HaveCount 2
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('MoveAvailable', 'StartDisk')
     $global:FsHaRoleWrites[0].InputObject | Should -Be $global:FsHaAvailableStorageGroup
     $global:FsHaRoleWrites[0].Node | Should -Be 'tcnaw-hafs01b'
     $global:FsHaRoleWrites[0].Wait | Should -Be 600
@@ -995,7 +1008,8 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact 2' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.32.0'; Network = 'Cluster Network 2'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('StopGroup', 'StopIp', 'RemoveIp', 'StopIp', 'RemoveIp', 'Dependency', 'StartGroup')
+    $global:FsHaRoleWrites | Should -HaveCount 7
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('StopGroup', 'StopIp', 'RemoveIp', 'StopIp', 'RemoveIp', 'Dependency', 'StartGroup')
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'StopGroup' }) | Should -HaveCount 1
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'StartGroup' }) | Should -HaveCount 1
   }
@@ -1046,13 +1060,14 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleResources = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.Name -ne 'IP Address 10.0.33.12' })
     $global:FsHaRoleRejectMultipleIpParameters = $True
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Contain 'AddIp'
-    $global:FsHaRoleWrites.Command | Should -Not -Contain 'Create'
+    $global:FsHaRoleWrites | Should -Not -BeNullOrEmpty
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Contain 'AddIp'
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Not -Contain 'Create'
     $Set = @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'SetIp' })
     $Set | Should -HaveCount 4
-    $Set.Resource | Should -Be @('IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12')
-    $Set.Parameter | Should -Be @('Network', 'SubnetMask', 'Address', 'EnableDhcp')
-    $Set.Value | Should -Be @('Cluster Network 2', $global:FsHaRoleNetworkMask, '10.0.33.12', 0)
+    @($Set | ForEach-Object -Process { $PSItem.Resource }) | Should -Be @('IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12', 'IP Address 10.0.33.12')
+    @($Set | ForEach-Object -Process { $PSItem.Parameter }) | Should -Be @('Network', 'SubnetMask', 'Address', 'EnableDhcp')
+    @($Set | ForEach-Object -Process { $PSItem.Value }) | Should -Be @('Cluster Network 2', $global:FsHaRoleNetworkMask, '10.0.33.12', 0)
   }
 
   It 'repairs wrong DHCP network and mask in one transaction' {
@@ -1060,13 +1075,15 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleResources[2].Parameters.Network = 'Wrong'
     $global:FsHaRoleResources[2].Parameters.SubnetMask = '255.0.0.0'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('StopGroup', 'SetIp', 'SetIp', 'SetIp', 'SetIp', 'Dependency', 'StartGroup')
+    $global:FsHaRoleWrites | Should -HaveCount 7
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('StopGroup', 'SetIp', 'SetIp', 'SetIp', 'SetIp', 'Dependency', 'StartGroup')
   }
 
   It 'repairs only the exact OR dependency with one stop-start' {
     $global:FsHaRoleDependency = '[IP Address 10.0.1.12] and [IP Address 10.0.33.12]'
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
-    $global:FsHaRoleWrites.Command | Should -Be @('StopGroup', 'Dependency', 'StartGroup')
+    $global:FsHaRoleWrites | Should -HaveCount 3
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('StopGroup', 'Dependency', 'StartGroup')
     $global:FsHaRoleWrites[1].Dependency | Should -Be '[IP Address 10.0.1.12] or [IP Address 10.0.33.12]'
   }
 
