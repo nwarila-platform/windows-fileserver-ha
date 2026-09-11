@@ -232,6 +232,40 @@ $ExitCode = 1
   Try {
     $MutationErrors = @()
     If ($Mutation.create_cluster) {
+      # New-Cluster reaches every prospective node over WMI and expects a fresh node's ClusSvc to be Stopped.
+      $PreScreenDeadlineSeconds = 300
+      $PreScreenIntervalSeconds = 15
+      $PreScreenDeadline = [System.DateTime]::UtcNow.AddSeconds($PreScreenDeadlineSeconds)
+      Do {
+        $LastProbeFailures = [ordered]@{}
+        ForEach ($ClusterNodeName In $Mutation.nodes) {
+          Try {
+            $ProbeResult = @(Get-WmiObject -Class Win32_Service -ComputerName $ClusterNodeName -Filter "Name='ClusSvc'" -ErrorAction Stop)
+            If ($ProbeResult.Count -ne 1 -or $Null -eq $ProbeResult[0]) {
+              Throw ('Expected one ClusSvc result; found {0}.' -f $ProbeResult.Count)
+            }
+            $ServiceState = [System.String]$ProbeResult[0].State
+            If ($ServiceState -ine 'Stopped') {
+              Throw ('ClusSvc state is {0}; expected Stopped.' -f $ServiceState)
+            }
+          } Catch {
+            $LastProbeFailures[$ClusterNodeName] = [System.String]$PSItem.Exception.Message
+          }
+        }
+        If ($LastProbeFailures.Count -eq 0) { Break }
+        $RemainingMilliseconds = [System.Int64][Math]::Floor(($PreScreenDeadline - [System.DateTime]::UtcNow).TotalMilliseconds)
+        If ($RemainingMilliseconds -le 0) {
+          $FailureDetails = @(ForEach ($Failure In $LastProbeFailures.GetEnumerator()) {
+              '{0} (last error: {1})' -f $Failure.Key, $Failure.Value
+            })
+          Throw ('Cluster formation readiness pre-screen timed out after {0} seconds; nodes that did not become ready: {1}.' -f $PreScreenDeadlineSeconds, ($FailureDetails -join '; '))
+        }
+        $WaitMilliseconds = [System.Int32][Math]::Min(
+          [System.Int64]$PreScreenIntervalSeconds * 1000,
+          $RemainingMilliseconds
+        )
+        If ($WaitMilliseconds -gt 0) { Start-Sleep -Milliseconds $WaitMilliseconds }
+      } While ($True)
       Try {
         New-Cluster -Name $Mutation.cluster_name -Node $Mutation.nodes -StaticAddress $Mutation.static_addresses -NoStorage -Force -ErrorAction:'SilentlyContinue' -ErrorVariable:'+MutationErrors'
       } Catch {

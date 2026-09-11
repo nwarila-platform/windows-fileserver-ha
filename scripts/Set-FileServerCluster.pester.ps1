@@ -84,12 +84,32 @@ BeforeAll {
     Param ([Parameter(ValueFromPipeline = $True)] [System.Object]$InputObject, [System.String]$Name)
     [PSCustomObject]@{ Name = 'Address'; Value = $InputObject.Address }
   }
+  Function Get-WmiObject {
+    [CmdletBinding()]
+    Param ([System.String]$Class, [System.String]$ComputerName, [System.String]$Filter)
+    $global:FsHaFormationProbeCalls += [PSCustomObject]@{
+      Class        = $Class
+      ComputerName = $ComputerName
+      Filter       = $Filter
+      ErrorAction  = [System.String]$PSBoundParameters.ErrorAction
+    }
+    $global:FsHaFormationOperations += ('Probe:{0}' -f $ComputerName)
+    $CallCount = @($global:FsHaFormationProbeCalls | Where-Object -FilterScript { $PSItem.ComputerName -eq $ComputerName }).Count
+    If ($global:FsHaFormationProbeFailures.ContainsKey($ComputerName) -and
+      $CallCount -le [System.Int32]$global:FsHaFormationProbeFailures[$ComputerName]) {
+      Throw ('Readiness probe failed for {0}.' -f $ComputerName)
+    }
+    $States = @($global:FsHaFormationServiceStates[$ComputerName])
+    $StateIndex = [System.Int32][Math]::Min($CallCount - 1, $States.Count - 1)
+    [PSCustomObject]@{ Name = 'ClusSvc'; State = [System.String]$States[$StateIndex] }
+  }
   Function New-Cluster {
     [CmdletBinding()]
     Param (
       [System.String]$Name, [System.String[]]$Node, [System.String[]]$StaticAddress,
       [Switch]$NoStorage, [Switch]$Force
     )
+    $global:FsHaFormationOperations += 'New'
     $global:FsHaClusterWrites += [PSCustomObject]@{ Command = 'New'; Name = $Name; Node = $Node; StaticAddress = $StaticAddress; NoStorage = $NoStorage.IsPresent; Force = $Force.IsPresent }
     If (-not $global:FsHaClusterFrozen) {
       $global:FsHaClusterPresent = $True
@@ -170,11 +190,18 @@ BeforeAll {
     $global:FsHaTaskUnregistrations += $TaskName
   }
   Function Invoke-MutationInnerCommand {
-    Param ([System.String]$Command)
+    Param (
+      [System.String]$Command,
+      [System.Int32]$PreScreenDeadlineSeconds = 300,
+      [System.Int32]$PreScreenIntervalSeconds = 0
+    )
     $PayloadMatches = [System.Text.RegularExpressions.Regex]::Matches($Command, "FromBase64String\('(?<Payload>[A-Za-z0-9+/=]+)'\)")
     If ($PayloadMatches.Count -ne 2) { Throw 'Encoded mutation command did not contain exactly two payloads.' }
     $TranscriptPath = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($PayloadMatches[1].Groups['Payload'].Value))
-    $ExecutableCommand = $Command.Replace('Exit $ExitCode', 'Write-Output -InputObject $ExitCode')
+    $ExecutableCommand = $Command.
+      Replace('$PreScreenDeadlineSeconds = 300', ('$PreScreenDeadlineSeconds = {0}' -f $PreScreenDeadlineSeconds)).
+      Replace('$PreScreenIntervalSeconds = 15', ('$PreScreenIntervalSeconds = {0}' -f $PreScreenIntervalSeconds)).
+      Replace('Exit $ExitCode', 'Write-Output -InputObject $ExitCode')
     Try {
       $Output = @(& ([System.Management.Automation.ScriptBlock]::Create($ExecutableCommand)))
       [PSCustomObject]@{
@@ -185,11 +212,23 @@ BeforeAll {
       Remove-Item -LiteralPath $TranscriptPath -Force -ErrorAction SilentlyContinue
     }
   }
+
+  Function New-FormationInnerCommand {
+    $global:FsHaClusterPresent = $False
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | Out-Null
+    $Command = $global:FsHaInnerCommand
+    $global:FsHaClusterPresent = $False
+    $global:FsHaClusterWrites = @()
+    $global:FsHaFormationProbeCalls = @()
+    $global:FsHaFormationOperations = @()
+    $Command
+  }
 }
 
 AfterAll {
   $env:TEMP = $script:OriginalTemp
-  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskResult', 'FsHaTaskUnregistrations' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskResult', 'FsHaTaskUnregistrations', 'FsHaFormationProbeCalls', 'FsHaFormationProbeFailures', 'FsHaFormationServiceStates', 'FsHaFormationOperations' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-FileServerCluster' {
@@ -217,6 +256,13 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaTaskStarts = @()
     $global:FsHaTaskResult = 0
     $global:FsHaTaskUnregistrations = @()
+    $global:FsHaFormationProbeCalls = @()
+    $global:FsHaFormationProbeFailures = @{}
+    $global:FsHaFormationServiceStates = @{}
+    ForEach ($ClusterNodeName In $script:Nodes) {
+      $global:FsHaFormationServiceStates[$ClusterNodeName] = @('Stopped')
+    }
+    $global:FsHaFormationOperations = @()
   }
   AfterEach { Remove-AnsibleContext }
 
@@ -321,6 +367,50 @@ Describe 'Set-FileServerCluster' {
     $InnerResult.exit_code | Should -Be 1
     $InnerResult.transcript | Should -Match 'simulated non-terminating New-Cluster DNS registration error'
     $InnerResult.transcript | Should -Not -Match 'New-Cluster -Name \$Mutation\.cluster_name'
+  }
+
+  It 'probes every prospective node over WMI for stopped ClusSvc before formation' {
+    $InnerCommand = New-FormationInnerCommand
+
+    $InnerResult = Invoke-MutationInnerCommand -Command $InnerCommand
+
+    $InnerResult.exit_code | Should -Be 0
+    $InnerCommand | Should -Match '\$PreScreenDeadlineSeconds = 300'
+    $InnerCommand | Should -Match '\$PreScreenIntervalSeconds = 15'
+    $global:FsHaFormationProbeCalls.ComputerName | Should -Be $script:Nodes
+    $global:FsHaFormationProbeCalls.Class | Select-Object -Unique | Should -Be 'Win32_Service'
+    $global:FsHaFormationProbeCalls.Filter | Select-Object -Unique | Should -Be "Name='ClusSvc'"
+    $global:FsHaFormationProbeCalls.ErrorAction | Select-Object -Unique | Should -Be 'Stop'
+    $global:FsHaFormationOperations | Should -Be @(
+      @($script:Nodes | ForEach-Object -Process { 'Probe:{0}' -f $PSItem }) + 'New'
+    )
+  }
+
+  It 'retries a prospective node that becomes ready and then forms the cluster' {
+    $ColdNode = $script:Nodes[1]
+    $InnerCommand = New-FormationInnerCommand
+    $global:FsHaFormationProbeFailures[$ColdNode] = 1
+
+    $InnerResult = Invoke-MutationInnerCommand -Command $InnerCommand -PreScreenDeadlineSeconds 10 -PreScreenIntervalSeconds 0
+
+    $InnerResult.exit_code | Should -Be 0
+    $global:FsHaFormationProbeCalls.ComputerName | Should -Be @($script:Nodes + $script:Nodes)
+    $global:FsHaClusterWrites.Command | Should -Be @('New')
+    $global:FsHaFormationOperations[-1] | Should -Be 'New'
+  }
+
+  It 'blocks formation and names a prospective node that never becomes ready' {
+    $ColdNode = $script:Nodes[2]
+    $InnerCommand = New-FormationInnerCommand
+    $global:FsHaFormationServiceStates[$ColdNode] = @('Running')
+
+    $InnerResult = Invoke-MutationInnerCommand -Command $InnerCommand -PreScreenDeadlineSeconds 0 -PreScreenIntervalSeconds 0
+
+    $InnerResult.exit_code | Should -Be 1
+    $InnerResult.transcript | Should -Match ([System.Text.RegularExpressions.Regex]::Escape($ColdNode))
+    $InnerResult.transcript | Should -Match 'last error: ClusSvc state is Running; expected Stopped'
+    $global:FsHaClusterWrites.Command | Should -Not -Contain 'New'
+    $global:FsHaFormationOperations | Should -Not -Contain 'New'
   }
 
   It 'converges a running member acquired by bare local cluster lookup' {
