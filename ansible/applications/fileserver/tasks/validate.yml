@@ -136,7 +136,7 @@
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.share.name == 'data'
-      - fileserver_running.cluster.share.path == 'D:\shares\data'
+      - fileserver_running.cluster.share.path is match('^[A-Z]:\\\\[^\\\\].*$')
       - fileserver_running.cluster.share.description is string
       - fileserver_running.cluster.share.description | length > 0
       - fileserver_running.cluster.share.continuously_available is boolean
@@ -147,14 +147,56 @@
         fileserver_running.cluster.share.encrypt_data
         == fileserver_running.smb.settings.EncryptData
     fail_msg: >-
-      Refusing to run: fileserver.cluster.share must declare the ratified data path,
-      non-empty description, CA/access-based/no-cache settings, and encryption equal to
-      fileserver.smb.settings.EncryptData.
+      Refusing to run: fileserver.cluster.share must declare the ratified data share with a
+      drive-rooted path below the root, non-empty description, CA/access-based/no-cache settings,
+      and encryption equal to fileserver.smb.settings.EncryptData.
     quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Clustered NTFS Access Entries'
+  ansible.builtin.assert:
+    that:
+      - ntfs_entry is mapping
+      - >-
+        ntfs_entry.keys() | list | sort
+        == ['access_control_type', 'inheritance_flags', 'principal', 'propagation_flags', 'rights']
+      - ntfs_entry.principal is string
+      - ntfs_entry.principal | length > 0
+      - ntfs_entry.access_control_type == 'Allow'
+      - ntfs_entry.inheritance_flags == 'ContainerInherit,ObjectInherit'
+      - ntfs_entry.propagation_flags == 'None'
+    fail_msg: >-
+      Refusing to run: each fileserver.cluster.share.ntfs_access entry must contain exactly
+      principal, access_control_type, rights, inheritance_flags, and propagation_flags, with a
+      non-empty principal and the ratified Allow, inheritance, and propagation settings.
+    quiet: true
+  loop: "{{ fileserver_running.cluster.share.ntfs_access }}"
+  loop_control:
+    label: "{{ ntfs_entry.principal | default('malformed NTFS access entry') }}"
+    loop_var: 'ntfs_entry'
+
+- name: 'VALIDATE | Require Well-Formed Clustered Share Access Entries'
+  ansible.builtin.assert:
+    that:
+      - share_entry is mapping
+      - >-
+        share_entry.keys() | list | sort
+        == ['access_control_type', 'access_right', 'principal']
+      - share_entry.principal is string
+      - share_entry.principal | length > 0
+      - share_entry.access_control_type == 'Allow'
+    fail_msg: >-
+      Refusing to run: each fileserver.cluster.share.share_access entry must contain exactly
+      principal, access_control_type, and access_right, with a non-empty principal and the
+      ratified Allow setting.
+    quiet: true
+  loop: "{{ fileserver_running.cluster.share.share_access }}"
+  loop_control:
+    label: "{{ share_entry.principal | default('malformed share access entry') }}"
+    loop_var: 'share_entry'
 
 - name: 'VALIDATE | Require The Exact Clustered Share Access Policy'
   vars:
-    __fileserver_expected_ntfs_access__:
+    __fileserver_required_ntfs_access__:
       - principal: 'NT AUTHORITY\SYSTEM'
         access_control_type: 'Allow'
         rights: 'FullControl'
@@ -165,18 +207,16 @@
         rights: 'FullControl'
         inheritance_flags: 'ContainerInherit,ObjectInherit'
         propagation_flags: 'None'
-      - principal: 'TCN\Domain Users'
-        access_control_type: 'Allow'
-        rights: 'Modify'
-        inheritance_flags: 'ContainerInherit,ObjectInherit'
-        propagation_flags: 'None'
-    __fileserver_expected_share_access__:
+    __fileserver_required_share_access__:
       - principal: 'BUILTIN\Administrators'
         access_control_type: 'Allow'
         access_right: 'Full'
-      - principal: 'TCN\Domain Users'
-        access_control_type: 'Allow'
-        access_right: 'Change'
+    __fileserver_site_ntfs_access__: >-
+      {{ fileserver_running.cluster.share.ntfs_access
+         | difference(__fileserver_required_ntfs_access__) }}
+    __fileserver_site_share_access__: >-
+      {{ fileserver_running.cluster.share.share_access
+         | difference(__fileserver_required_share_access__) }}
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.share.ntfs_access | length == 3
@@ -184,23 +224,24 @@
         fileserver_running.cluster.share.ntfs_access
         | map(attribute='principal') | unique | length == 3
       - >-
-        __fileserver_expected_ntfs_access__
+        __fileserver_required_ntfs_access__
         | difference(fileserver_running.cluster.share.ntfs_access) | length == 0
-      - >-
-        fileserver_running.cluster.share.ntfs_access
-        | difference(__fileserver_expected_ntfs_access__) | length == 0
+      - __fileserver_site_ntfs_access__ | length == 1
+      - __fileserver_site_ntfs_access__[0].rights == 'Modify'
       - fileserver_running.cluster.share.share_access | length == 2
       - >-
         fileserver_running.cluster.share.share_access
         | map(attribute='principal') | unique | length == 2
       - >-
-        __fileserver_expected_share_access__
+        __fileserver_required_share_access__
         | difference(fileserver_running.cluster.share.share_access) | length == 0
+      - __fileserver_site_share_access__ | length == 1
+      - __fileserver_site_share_access__[0].access_right == 'Change'
       - >-
-        fileserver_running.cluster.share.share_access
-        | difference(__fileserver_expected_share_access__) | length == 0
+        __fileserver_site_ntfs_access__[0].principal
+        == __fileserver_site_share_access__[0].principal
     fail_msg: >-
-      Refusing to run: fileserver.cluster.share.ntfs_access and share_access must equal the
-      ratified protected-DACL and two-principal share policy exactly, with unique principals,
-      Allow entries only, and no extension entries.
+      Refusing to run: fileserver.cluster.share.ntfs_access and share_access must preserve the
+      ratified protected-DACL and share policy exactly, with unique principals and one shared
+      non-empty site principal granted Modify and Change respectively.
     quiet: true
