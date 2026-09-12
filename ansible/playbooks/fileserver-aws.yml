@@ -305,6 +305,20 @@
   vars:
     ansible_user: 'TCN\svc-fscluster-mgr'
     ansible_password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"
+
+  #region ------ [ Roles ] -------------------------------------------------------------------- #
+  roles:
+
+    #region ------ [ Roles: File Server ] ----------------------------------------------------- #
+    - role: 'fileserver'
+      vars:
+        fileserver:  # noqa: var-naming[no-role-prefix]
+          <<: *fileserver_environment
+          execution_scope: 'cluster'
+
+    #endregion --- [ Roles: File Server ] ----------------------------------------------------- #
+
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #
   tasks:
 
     - name: 'BEGIN (aws) | Acquire IMDSv2 Tokens For The Disk Preparers'

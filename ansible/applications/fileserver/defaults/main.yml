@@ -5,6 +5,7 @@
 # Lowest-precedence configuration for the fileserver role. The v3 loader merges the OS overlay
 # in vars/ over this map and publishes the result as 'fileserver_running'; tasks read only the
 # merged map, never these keys directly.
+# The playbook selects 'cluster' for its cluster play; the baseline caller takes the 'node' default.
 #
 # Product policy belongs here. The playbook supplies the cluster, host, network, storage, and
 # directory identities that change between deployments.
@@ -13,6 +14,12 @@
 ---
 fileserver_defaults:
 
+  #region ------ [ Execution scope ] ----------------------------------------------------------- #
+
+  # Preserve the full node baseline unless a caller explicitly crosses the cluster-only boundary.
+  execution_scope: 'node'
+
+  #endregion --- [ Execution scope ] ----------------------------------------------------------- #
   #region ------ [ SMB server baseline ] ----------------------------------------------------- #
 
   smb:

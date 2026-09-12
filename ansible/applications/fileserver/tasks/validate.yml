@@ -12,6 +12,14 @@
 #
 # =========================================================================================== #
 ---
+- name: 'VALIDATE | Require A Supported Execution Scope'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.execution_scope in ['node', 'cluster']
+    fail_msg: >-
+      Refusing to run: fileserver.execution_scope must be either 'node' or 'cluster'.
+    quiet: true
+
 - name: 'VALIDATE | Require A Non-Empty SMB Baseline Of Well-Formed Property Names'
   ansible.builtin.assert:
     that:
