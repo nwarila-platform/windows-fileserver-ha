@@ -3,6 +3,7 @@
 # --- [ Description ] ----------------------------------------------------------------------- #
 # Role metadata for fileserver. Description-only (style guide §8): NOT an enforcing argument
 # spec. The role's tasks/validate.yml enforces its merged-config guards.
+# The playbook selects the role's node or cluster execution scope; tasks/validate.yml enforces it.
 #
 # Defaults describe the ratified SMB, four-node cluster, disk-owner, AZ-a file-server role,
 # and encrypted share policy. Runtime volume identities and the cluster password are resolved

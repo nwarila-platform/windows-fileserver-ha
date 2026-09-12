@@ -23,6 +23,9 @@
 # The referenced .ps1 is MATERIALIZED from powershell/ by scripts/materialize-role-scripts.sh
 # (the role tracks only files/Set-SmbServerHardening.ps1.stub); run it before this role.
 - name: 'MAIN | Converge The SMB Server Hardening Baseline'
+  when:
+    - fileserver_running.execution_scope == 'node'
+
   ansible.windows.win_powershell:
     script: "{{ lookup('ansible.builtin.file', 'Set-SmbServerHardening.ps1') }}"
     parameters:
@@ -32,7 +35,9 @@
 # The role serves all five domain members, but only the four nodes join the cluster. Keep cluster
 # prerequisites node-scoped while the witness continues through the shared SMB baseline.
 - name: 'MAIN | Prepare The Cluster Nodes For Validation'
-  when: inventory_hostname in (groups['fileserver_nodes'] | default([]))
+  when:
+    - fileserver_running.execution_scope == 'node'
+    - inventory_hostname in (groups['fileserver_nodes'] | default([]))
   vars:
     __fileserver_nvme_path__: >-
       HKLM:\SYSTEM\CurrentControlSet\Services\AWSNVMe\Parameters\Device
@@ -365,7 +370,9 @@
 # account alone. Local administrator on every node is the other half of what it needs, and it is
 # granted here rather than in the directory role because it is a property of these hosts.
 - name: 'MAIN | Ensure The Cluster Service Account Administers The Cluster Nodes'
-  when: inventory_hostname in (groups['fileserver_nodes'] | default([]))
+  when:
+    - fileserver_running.execution_scope == 'node'
+    - inventory_hostname in (groups['fileserver_nodes'] | default([]))
 
   ansible.windows.win_group_membership:
     members:

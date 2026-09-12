@@ -44,6 +44,8 @@ and share-access policy. Validation treats those maps as exact policy. Secrets a
 volume identifiers never enter defaults: the playbook resolves the password once into controller
 memory and resolves Function-tagged volumes through IMDSv2 plus DescribeVolumes immediately
 before cluster mutation.
+The baseline role call takes the node execution-scope default; the cluster play passes cluster,
+and tasks read only fileserver_running.execution_scope.
 
 The directory DACL is protected and contains exactly SYSTEM and local Administrators
 `FullControl` plus Domain Users `Modify`; the share ACL contains exactly local Administrators
