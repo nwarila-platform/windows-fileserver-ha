@@ -6,8 +6,8 @@
 # in vars/ over this map and publishes the result as 'fileserver_running'; tasks read only the
 # merged map, never these keys directly.
 #
-# This single-fleet role defaults the ratified topology and security policy. Secrets and runtime
-# AWS identifiers never belong in defaults; the playbook resolves them only at their use boundary.
+# Product policy belongs here. The playbook supplies the cluster, host, network, storage, and
+# directory identities that change between deployments.
 #
 # =========================================================================================== #
 ---
@@ -35,37 +35,16 @@ fileserver_defaults:
 
   #endregion --- [ SMB server baseline ] ----------------------------------------------------- #
   #region ------ [ Cluster ] ----------------------------------------------------------------- #
+
+  # The Windows resource labels and share policy travel with the product. A caller replacing an
+  # access list supplies it whole; these residual entries remain the policy when no list is given.
   cluster:
-    service_account: 'TCN\svc-fscluster-mgr'
-    name: 'TCNAW-FSCL01'
-    nodes:
-      - 'tcnaw-hafs01a'
-      - 'tcnaw-hafs02a'
-      - 'tcnaw-hafs01b'
-      - 'tcnaw-hafs02b'
-    static_addresses:
-      - '10.0.1.11'
-      - '10.0.33.11'
-      - '10.0.65.11'
-      - '10.0.97.11'
     name_resource: 'Cluster Name'
     name_parameters:
       register_all_providers_ip: 0
       host_record_ttl: 300
-    shared_disks:
-      - function: 'Cluster Shared Volume (AZ A)'
-        owners: ['tcnaw-hafs01a', 'tcnaw-hafs02a']
-        fileserver_home: true
-      - function: 'Cluster Shared Volume (AZ B)'
-        owners: ['tcnaw-hafs01b', 'tcnaw-hafs02b']
-        fileserver_home: false
-    file_server:
-      name: 'TCNAW-HAFS01'
-      static_addresses: ['10.0.1.12', '10.0.33.12']
-      ignored_network_addresses: ['10.0.64.0', '10.0.96.0']
     share:
       name: 'data'
-      path: 'D:\shares\data'
       description: 'Highly available file data'
       continuously_available: true
       folder_enumeration_mode: 'AccessBased'
@@ -82,16 +61,8 @@ fileserver_defaults:
           rights: 'FullControl'
           inheritance_flags: 'ContainerInherit,ObjectInherit'
           propagation_flags: 'None'
-        - principal: 'TCN\Domain Users'
-          access_control_type: 'Allow'
-          rights: 'Modify'
-          inheritance_flags: 'ContainerInherit,ObjectInherit'
-          propagation_flags: 'None'
       share_access:
         - principal: 'BUILTIN\Administrators'
           access_control_type: 'Allow'
           access_right: 'Full'
-        - principal: 'TCN\Domain Users'
-          access_control_type: 'Allow'
-          access_right: 'Change'
   #endregion --- [ Cluster ] ----------------------------------------------------------------- #

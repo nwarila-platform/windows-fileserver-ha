@@ -219,6 +219,49 @@
 
     # Converges the Administrator-owned SMB baseline and node-local cluster prerequisites.
     - role: 'fileserver'
+      vars:
+        fileserver: &fileserver_environment  # noqa: var-naming[no-role-prefix]
+          cluster:
+            service_account: 'TCN\svc-fscluster-mgr'
+            name: 'TCNAW-FSCL01'
+            nodes: ['tcnaw-hafs01a', 'tcnaw-hafs02a', 'tcnaw-hafs01b', 'tcnaw-hafs02b']
+            static_addresses: ['10.0.1.11', '10.0.33.11', '10.0.65.11', '10.0.97.11']
+            shared_disks:
+              - function: 'Cluster Shared Volume (AZ A)'
+                owners: ['tcnaw-hafs01a', 'tcnaw-hafs02a']
+                fileserver_home: true
+              - function: 'Cluster Shared Volume (AZ B)'
+                owners: ['tcnaw-hafs01b', 'tcnaw-hafs02b']
+                fileserver_home: false
+            file_server:
+              name: 'TCNAW-HAFS01'
+              static_addresses: ['10.0.1.12', '10.0.33.12']
+              ignored_network_addresses: ['10.0.64.0', '10.0.96.0']
+            share:
+              path: 'D:\shares\data'
+              ntfs_access:
+                - principal: 'NT AUTHORITY\SYSTEM'
+                  access_control_type: 'Allow'
+                  rights: 'FullControl'
+                  inheritance_flags: 'ContainerInherit,ObjectInherit'
+                  propagation_flags: 'None'
+                - principal: 'BUILTIN\Administrators'
+                  access_control_type: 'Allow'
+                  rights: 'FullControl'
+                  inheritance_flags: 'ContainerInherit,ObjectInherit'
+                  propagation_flags: 'None'
+                - principal: 'TCN\Domain Users'
+                  access_control_type: 'Allow'
+                  rights: 'Modify'
+                  inheritance_flags: 'ContainerInherit,ObjectInherit'
+                  propagation_flags: 'None'
+              share_access:
+                - principal: 'BUILTIN\Administrators'
+                  access_control_type: 'Allow'
+                  access_right: 'Full'
+                - principal: 'TCN\Domain Users'
+                  access_control_type: 'Allow'
+                  access_right: 'Change'
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
 

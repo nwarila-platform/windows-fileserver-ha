@@ -81,9 +81,23 @@
     # URL carries the account id, so it is composed here rather than defaulted in the role.
     - role: 'fileserver_ad_config'
       vars:
-        fileserver_ad_config:
+        fileserver_ad_config:  # noqa: var-naming[no-role-prefix]
           service_account:
+            name: 'svc-fscluster-mgr'
             password: "{{ __fileserver_ad_password__ }}"
+            path: 'OU=Domain Service Accounts,DC=tcn,DC=trinitytechnicalservices,DC=com'
+          cluster:
+            name: 'TCNAW-FSCL01'
+            path: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+          file_server:
+            name: 'TCNAW-HAFS01'
+            path: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+          dns_zone: 'tcn.trinitytechnicalservices.com'
+          nodes:
+            tcnaw-hafs01a: '10.0.1.10'
+            tcnaw-hafs02a: '10.0.33.10'
+            tcnaw-hafs01b: '10.0.65.10'
+            tcnaw-hafs02b: '10.0.97.10'
     #endregion --- [ Roles: Directory Account ] ----------------------------------------------- #
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
