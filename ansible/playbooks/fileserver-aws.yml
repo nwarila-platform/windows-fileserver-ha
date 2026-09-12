@@ -131,15 +131,21 @@
     #endregion --- [ Roles: Remote Client ] --------------------------------------------------- #
 
     #region ------ [ Roles: Domain Member ] --------------------------------------------------- #
-    # Wraps the platform's join mechanism and defaults the site's realm, account, and secret.
-    # Only two things are this repository's to say: the account it deploys into, and the OU where
-    # its file-server computer objects belong.
+    # Three things are this environment's: the realm and join account, the OU a file server is filed
+    # under, and which address the host publishes in DNS. The VPC address, because the host is
+    # multi-homed and its security groups permit cluster traffic only over the VPC path.
     - role: 'domain_member'
       when: (state | default('present') | string | lower | trim) != 'absent'
       vars:
         domain_member:  # noqa: var-naming[no-role-prefix]
-          password: { bucket: "{{ aws_account_id }}-ansible" }
+          realm: 'tcn.trinitytechnicalservices.com'
+          user: 'svc-domainjoin@tcn.trinitytechnicalservices.com'
+          password: >-
+            {{ lookup('secret',
+                's3://' ~ aws_account_id ~ '-ansible/host_roles/domain_member/svc-domainjoin-password.txt',
+                '07493ed779c2962bff0b5e19cfa00b8cdb95defcf477f6b5bac36ddef55087ae') }}
           computer_ou: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+          registration_address: "{{ aws_private_ip_address }}"
     #endregion --- [ Roles: Domain Member ] --------------------------------------------------- #
 
     #region ------ [ Roles: Windows Disk Manager ] -------------------------------------------- #
