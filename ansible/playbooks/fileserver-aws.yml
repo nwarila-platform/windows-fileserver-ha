@@ -321,44 +321,6 @@
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
   tasks:
 
-    - name: 'MAIN | Form The File Server Cluster'
-      block:
-        - name: 'MAIN | Run The File Server Cluster Formation'
-          # The connection password is reused only for the delegation-capable batch logon.
-          no_log: true
-          register: '__fileserver_cluster__'
-
-          ansible.windows.win_powershell:
-            depth: 4
-            error_action: 'stop'
-            parameters:
-              ClusterName: "{{ fileserver_running.cluster.name }}"
-              Node: "{{ fileserver_running.cluster.nodes }}"
-              Password: "{{ ansible_password }}"
-              ReacquireTimeoutSeconds: 120
-              StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
-              TimeoutSeconds: 1200
-            remote_src: false
-            script: >-
-              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-FileServerCluster.ps1') }}
-      rescue:
-        - name: 'MAIN | Report That The File Server Cluster Could Not Be Formed'
-
-          ansible.builtin.fail:
-            msg: >-
-              {{
-                (
-                  (__fileserver_cluster__.error | default([]) | map(attribute='output') | list)
-                  + [
-                    (
-                      __fileserver_cluster__.msg
-                      | default('File server cluster formation failed.')
-                    )
-                  ]
-                )
-                | join('\n')
-              }}
-
     - name: 'MAIN | Converge The Cluster Name Parameters'
       register: '__fileserver_cluster_name_parameters__'
       ansible.windows.win_powershell:
