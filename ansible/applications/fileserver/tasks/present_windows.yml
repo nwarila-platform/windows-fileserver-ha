@@ -384,8 +384,8 @@
 
 #region ------ [ Cluster ] ------------------------------------------------------------------- #
 # The cluster scope runs on the former only, after the node baseline has converged on every
-# member. Its BEGIN phase turns the declared shared-disk functions into the volume identities
-# the platform actually attached; nothing here mutates the guest.
+# member. Its BEGIN phase resolves the attached volume identities for later disk adoption; its
+# PROCESS phase forms the cluster from the declared name, nodes, and static addresses.
 - name: 'MAIN | Resolve The Runtime Identity Of The Shared Disks'
   when:
     - fileserver_running.execution_scope == 'cluster'
@@ -527,6 +527,52 @@
         quiet: true
 
     #endregion --- [ Begin: Resolve The Runtime Identity Of The Shared Disks ] ---------------- #
+
+- name: 'MAIN | Form The File Server Cluster'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Form The File Server Cluster ] ---------------------------------- #
+
+    - name: 'PROCESS | Run The File Server Cluster Formation'
+      # The connection password is reused only for the delegation-capable batch logon.
+      no_log: true
+      register: '__fileserver_cluster__'
+
+      ansible.windows.win_powershell:
+        depth: 4
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          Node: "{{ fileserver_running.cluster.nodes }}"
+          Password: "{{ ansible_password }}"
+          ReacquireTimeoutSeconds: 120
+          StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
+          TimeoutSeconds: 1200
+        remote_src: false
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-FileServerCluster.ps1') }}
+
+    #endregion --- [ Process: Form The File Server Cluster ] ---------------------------------- #
+
+  rescue:
+    - name: 'PROCESS | Report That The File Server Cluster Could Not Be Formed'
+
+      ansible.builtin.fail:
+        msg: >-
+          {{
+            (
+              (__fileserver_cluster__.error | default([]) | map(attribute='output') | list)
+              + [
+                (
+                  __fileserver_cluster__.msg
+                  | default('File server cluster formation failed.')
+                )
+              ]
+            )
+            | join('\n')
+          }}
 
 #endregion --- [ Cluster ] ------------------------------------------------------------------- #
 
