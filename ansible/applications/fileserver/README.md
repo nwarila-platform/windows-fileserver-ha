@@ -42,8 +42,9 @@ Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`
 single fleet's ratified SMB, cluster topology, disk-owner, role-address, share-property, NTFS,
 and share-access policy. Validation treats those maps as exact policy. Secrets and runtime AWS
 volume identifiers never enter defaults: the playbook resolves the password once into controller
-memory and resolves Function-tagged volumes through IMDSv2 plus DescribeVolumes immediately
-before cluster mutation.
+memory, and the role's cluster scope resolves Function-tagged volumes using IMDSv2 on each declared
+disk preparer and DescribeVolumes on localhost, then publishes the resolved map on the former
+immediately before cluster mutation.
 The baseline role call takes the node execution-scope default; the cluster play passes cluster,
 and tasks read only fileserver_running.execution_scope.
 
