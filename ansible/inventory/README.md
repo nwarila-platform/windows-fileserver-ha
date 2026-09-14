@@ -2,13 +2,13 @@
 
 ## There is no static inventory, and that is deliberate
 
-The AWS deploy is **ephemeral**: every run creates a new instance, converges it, and destroys it.
-An instance id written into a file here would be wrong the moment the run that produced it ended.
+The AWS deploy is **ephemeral**: every run creates five new instances, converges them, and destroys them.
+Instance ids written into a file here would be wrong the moment the run that produced them ended.
 
-## `aws_ec2.yml` — one run's instance, describing itself
+## `aws_ec2.yml` — one run's instances, describing themselves
 
 The file is in two parts. The first is the only part that is about this repository: the region, the
-four tag filters that select one run's instance — `RepositoryId`, `RunId` and `Repository` from the
+four tag filters that select one run's instances — `RepositoryId`, `RunId` and `Repository` from the
 workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and three composed
 groups. `fileserver_nodes` contains the four cluster nodes, `fileserver_witness` contains the
 domain-joined witness, and overlapping singleton `fileserver_cluster_former` selects the exact Name

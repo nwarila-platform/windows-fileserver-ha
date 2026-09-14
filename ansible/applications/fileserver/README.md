@@ -1,7 +1,7 @@
-# fileserver
+# `fileserver` role
 
-Windows Server 2025 highly available file service (WSFC stretch cluster) — the single
-application role this repository carries.
+Windows Server 2025 highly available file service (WSFC stretch cluster) — the cluster/file-service
+application role; directory prestaging is owned by the sibling `fileserver_ad_config` supporting role.
 
 ## Implemented scope
 
@@ -25,10 +25,10 @@ spec, under `scripts/`:
 | `files/Get-ClusteredFileServerOwner.ps1.stub` | `scripts/Get-ClusteredFileServerOwner.ps1` + `.pester.ps1` | Exact Online clustered file-server role owner for node-local delegation |
 | `files/Set-DomainControllerReverseZone.ps1.stub` | `scripts/Set-DomainControllerReverseZone.ps1` + `.pester.ps1` | Exact domain-controller reverse-zone NRPT rule with failure-honest readback |
 | `files/Set-SmbServerHardening.ps1.stub` | `scripts/Set-SmbServerHardening.ps1` + `.pester.ps1` | SMB server configuration against the declared baseline (`fileserver.smb.settings`) |
-| `files/Set-FileServerCluster.ps1.stub` | `scripts/Set-FileServerCluster.ps1` + `.pester.ps1` | Exact four-node cluster and core static addresses |
+| `files/Set-FileServerCluster.ps1.stub` | `scripts/Set-FileServerCluster.ps1` + `.pester.ps1` | Exact caller-declared cluster membership and static addresses |
 | `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Cluster Name DNS registration parameters |
 | `files/Set-ClusterSharedDisks.ps1.stub` | `scripts/Set-ClusterSharedDisks.ps1` + `.pester.ps1` | EBS-identity disk adoption, possible owners, and Online state |
-| `files/Set-ClusteredFileServer.ps1.stub` | `scripts/Set-ClusteredFileServer.ps1` + `.pester.ps1` | AZ-a file-server role, home disk, preferred owners, static IPs, and OR dependency |
+| `files/Set-ClusteredFileServer.ps1.stub` | `scripts/Set-ClusteredFileServer.ps1` + `.pester.ps1` | Caller-declared file-server role converged by the role's cluster scope: home disk, preferred owners, static IPs, and OR dependency |
 | `files/Set-ClusteredSmbShare.ps1.stub` | `scripts/Set-ClusteredSmbShare.ps1` + `.pester.ps1` | Protected directory DACL and exact scoped clustered SMB share |
 
 `scripts/materialize-role-scripts.sh` resolves each stub into `files/<Name>.ps1` before the
@@ -38,15 +38,39 @@ re-acquire-and-verify cycle and reports a deterministic Change/NoChange verdict 
 `$Ansible`, so the play recap stays honest and the task file stays declarative. Contract and
 repo wiring: [docs/reference/powershell-style-guide.md](../../../docs/reference/powershell-style-guide.md).
 
+## What the caller supplies
+
+For `state=present`, the playbook supplies the environment-specific leaves omitted from defaults:
+
+| Key | Contract |
+|---|---|
+| `cluster.service_account` | Account that forms and administers the cluster nodes. |
+| `cluster.name` | Cluster identity. |
+| `cluster.nodes` | Exact four-node list. |
+| `cluster.static_addresses` | Four distinct core cluster addresses. |
+| `cluster.shared_disks[]` | Exactly two `function`, `owners`, and `fileserver_home` declarations. |
+| `cluster.file_server.name` | Clustered file-server role identity. |
+| `cluster.file_server.static_addresses` | Two distinct role addresses. |
+| `cluster.file_server.ignored_network_addresses` | Two distinct ignored network addresses. |
+| `cluster.share.path` | Drive-rooted clustered-share path. |
+| `cluster.share.ntfs_access` | Complete three-entry protected DACL, including the site principal. |
+| `cluster.share.share_access` | Complete two-entry share ACL, including the same site principal. |
+
+The inventory contract supplies the four-node group, the invocation supplies the AWS region, and the
+cluster play supplies its ambient cluster-service-account connection context. `tasks/validate.yml`
+rejects a malformed merged map before any role mutation.
+
 ## Configuration
 
-Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry this
-single fleet's ratified SMB, cluster topology, disk-owner, role-address, share-property, NTFS,
-and share-access policy. Validation treats those maps as exact policy. Secrets and runtime AWS
-volume identifiers never enter defaults: the playbook resolves the password once into controller
-memory, and the role's cluster scope resolves Function-tagged volumes using IMDSv2 on each declared
-disk preparer and DescribeVolumes on localhost, then publishes the resolved map on the former
-immediately before cluster mutation.
+Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry product
+opinion only: the node execution-scope default, SMB hardening, fixed Windows resource and share
+labels, Cluster Name resource parameters, share properties, and built-in principal grants. The
+playbook supplies every deployment-specific value through its anchored `fileserver` map: the
+service account; cluster and file-server identities; node and disk ownership; addresses; share path;
+and site principal. Caller-supplied access lists replace the defaults whole. Validation treats the
+merged maps as exact policy. Runtime volume identifiers and the cluster credential never enter
+defaults; the playbook resolves the credential once, and the role's cluster scope resolves the
+Function-tagged declared volumes immediately before cluster mutation.
 The baseline role call takes the node execution-scope default; the cluster play passes cluster,
 and tasks read only fileserver_running.execution_scope.
 
@@ -56,3 +80,10 @@ The directory DACL is protected and contains exactly SYSTEM and local Administra
 
 Not implemented: the witness SMB share and quorum, an AZ-b file-server role, and Storage Replica.
 Quorum remains `NodeMajority`; the adopted AZ-b disk is owner-scoped but hosts no role.
+
+## State
+
+- `present` (default) — converge the role's declared state.
+- `absent` — not implemented; the framework loader fails before role work because no
+  `absent_windows.yml` exists.
+- `clean` — supported no-op; neither role leaves a persistent cache to remove.

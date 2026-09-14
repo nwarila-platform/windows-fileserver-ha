@@ -30,9 +30,11 @@ organization's single PowerShell definition,
   recap shows an honest `ok`/`changed` per action;
 - scripts run identically standalone (JSON result) and under Ansible, so specs and dev shells
   exercise the exact production path;
-- CI is one thin workflow ([powershell.yml](.github/workflows/powershell.yml)) importing the
-  org's reusable pester-matrix: one matrix leg per script, house analyzer at zero findings,
-  then the spec. It runs only when a PR touches a PowerShell file.
+- CI is one thin workflow ([powershell.yml](.github/workflows/powershell.yml)) with
+  `pester-matrix-pr` for pull requests and `pester-matrix-push` for main-branch pushes. Each job
+  imports the same reusable matrix: one leg per script, house analyzer at zero findings, then the
+  spec. Both triggers select PowerShell script and workflow file changes. Every job's immutable
+  `uses` and `with.template-ref` values stay equal.
 
 Repo wiring: [docs/reference/powershell-style-guide.md](docs/reference/powershell-style-guide.md).
 Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ansible-style-guide.md).
@@ -42,7 +44,9 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 | Path | Contents |
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
+| `ansible/applications/fileserver_ad_config/` | Supporting role that prestages the directory objects and their scoped rights. |
 | `ansible/playbooks/fileserver-aws.yml` | Prepares the fleet, applies the Administrator baseline, resolves the cluster credential once, forms the cluster and AZ-a service, performs the final proof, and scrubs the credential variable. |
+| `ansible/playbooks/fileserver-ad-config-local.yml` | Manual domain-controller playbook for the supporting directory role. |
 | `ansible/inventory/` | The tracked EC2 dynamic inventory and its group contract (`fileserver_nodes`, `fileserver_witness`, and overlapping singleton `fileserver_cluster_former`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |
 | `docs/reference/` | Authoring rules for Ansible tasks and this repo's PowerShell wiring, plus AWS IAM reference documents. |

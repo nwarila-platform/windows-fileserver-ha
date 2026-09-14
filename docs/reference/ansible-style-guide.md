@@ -8,19 +8,19 @@
 
 ## 1. Repo & composition model — SEEDED (kickoff 2026-07-15)
 
-- One coherent capability per role; this repository carries the `fileserver`
-  application role and composes it into a version-pinned `ansible-framework`
-  checkout at execution time (the framework pin and composition tooling land with
-  the deploy scaffold). Roles must be drop-in compatible with the framework's
-  `applications/` namespace (`roles_path` resolution by bare name).
+- One coherent capability per role; this repository carries the `fileserver` application role and
+  the separate `fileserver_ad_config` directory-preparation role, and composes both into a
+  version-pinned `ansible-framework` checkout at execution time. Roles must be drop-in compatible
+  with the framework's `applications/` namespace (`roles_path` resolution by bare name).
 - The framework is the chassis: `ansible.cfg`, lint configs, loader contract, CI
   conventions all originate upstream. Application repos copy `.yamllint.yml` /
   `.editorconfig` for local dev parity.
 
 ## 2. Naming — SEEDED
 
-- Repo: `windows-fileserver-ha`. Role: `fileserver` (bare capability name
-  resolved via framework `roles_path`). Playbook: `fileserver-aws.yml`.
+- Repo: `windows-fileserver-ha`. Roles: `fileserver` and `fileserver_ad_config` (bare capability
+  names resolved via framework `roles_path`). Playbooks: `fileserver-aws.yml` and
+  `fileserver-ad-config-local.yml`.
   Inventory groups: `fileserver_nodes` (the four cluster nodes),
   `fileserver_witness` (the domain-joined file-share witness, not a cluster member), and overlapping
   `fileserver_cluster_former` (the singleton `tcnaw-hafs01a` service-account formation host).
@@ -66,8 +66,8 @@ generation tracked as debt does not exist here.
 
 ## 4. Task authoring idioms — SEEDED (from wazuh_agent + python3_pip; ratify per cycle)
 
-- Task names: `'STAGE | Imperative description'` — stages observed: `INIT`, `MAIN`,
-  `BEGIN` (input guards), `END` (verification), `Cleanup`, `INFO` (block wrappers).
+- Task and play names use `'STAGE | Imperative description'`; stages currently used are `PLAY`,
+  `INVENTORY`, `INIT`, `VALIDATE`, `INFO`, `MAIN`, `BEGIN`, `PROCESS`, and `Cleanup`.
 - `#region` / `#endregion` banner comments delimit logical sections; files open with
   the boxed header comment (`File:`, description, version where applicable).
 - Fully-qualified collection names always (`ansible.builtin.*`, `ansible.windows.*`).
@@ -172,9 +172,8 @@ clobber, verified at the module source). These stay `quiet: true` with an action
   `| first`). Zero and multiple are both hand-off failures. Declared specs must be mutually
   distinguishable (e.g. distinct identifiers).
 - The declared CONFIG contract (post-merge `config.*`) is validated in ONE place where `config` is
-  in scope — the role's `tasks/validate.yml`, run by the
-  local v3.1.0 loader's `INIT | Validating Merged Configuration` hook. Version numbering
-  verifies that the pinned framework loader is v3.3.0; its hook was not byte-inspected.
+  in scope — the role's `tasks/validate.yml`, run by the pinned v3.3.0 loader's
+  `INIT | Validating Merged Configuration` hook.
   This validation must **never** use `meta/argument_specs.yml` (it is structurally blind
   to the merged `config`; see §8).
 - Guards carry a negative proof: deliberately wrong input fails on the intended assert

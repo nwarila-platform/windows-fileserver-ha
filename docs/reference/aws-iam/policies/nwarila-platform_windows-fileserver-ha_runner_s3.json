@@ -29,10 +29,10 @@
       }
     },
     {
-      "Sid": "ReadAppRepoBucketWideNoListing",
+      "Sid": "ReadOnlyThePinnedOpenVpnInstaller",
       "Effect": "Allow",
       "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::<account-id>-apprepo/*",
+      "Resource": "arn:aws:s3:::<account-id>-apprepo/OpenVPN.net/OpenVPN Community/2.6.22/OpenVPNnet_OpenVPN-Community_2.6.22_x64.msi",
       "Condition": {
         "StringEquals": {
           "aws:ResourceAccount": "<account-id>"
@@ -45,8 +45,7 @@
       "Action": "s3:GetObject",
       "Resource": [
         "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt",
-        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn",
-        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test-v2.ovpn"
+        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn"
       ],
       "Condition": {
         "StringEquals": {

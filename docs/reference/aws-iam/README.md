@@ -22,15 +22,16 @@ Before applying the documents, review them together and change:
 ## Roles and policy attachments
 
 Trust-document file names follow the upstream naming scheme; role names follow
-`<owner>_<repo>_<runner|admin>` and are the values in the `Role` column.
+`<owner>_<repo>_<runner|admin|reaper>` and are the values in the `Role` column.
 
 | Role | Trust document | Attached permissions | Purpose |
 |---|---|---|---|
 | `nwarila-platform_windows-fileserver-ha_runner` | `roles/github_nwarila-platform_windows-fileserver-ha.trust.json` | All eight `runner_*.json` policies below | Repository deployment access |
 | `nwarila-platform_windows-fileserver-ha_admin` | `roles/github_nwarila-platform_windows-fileserver-ha-admin.trust.json` | All eight `runner_*.json` policies below | Operator deployment access |
+| `nwarila-platform_windows-fileserver-ha_reaper` | `roles/github_nwarila-platform_windows-fileserver-ha-reaper.trust.json` | All six `reaper_*.json` policies below | Out-of-process, destroy-only cleanup |
 | `nwarila-ec2-role` | `roles/nwarila-ec2-role.trust.json` | `AmazonSSMManagedInstanceCore` only | EC2 instance profile `nwarila-ec2-profile` |
 
-No workflow currently shipped by this repository assumes the runner role.
+The deploy workflow assumes the runner role through DEPLOY_ROLE; the reaper workflow assumes the reaper role through REAPER_ROLE.
 
 | Policy document | Grant |
 |---|---|
@@ -42,6 +43,12 @@ No workflow currently shipped by this repository assumes the runner role.
 | `nwarila-platform_windows-fileserver-ha_runner_kms.json` | Resolve KMS aliases and keys; use KMS cryptographic and grant operations through EC2 in `us-east-1` |
 | `nwarila-platform_windows-fileserver-ha_runner_s3.json` | Manage the two Terraform state objects and list only those two keys; read the OpenVPN and directory-join artifacts |
 | `nwarila-platform_windows-fileserver-ha_runner_ebs.json` | Describe volumes; create tagged volumes; attach, detach and delete owned volumes |
+| `nwarila-platform_windows-fileserver-ha_reaper_ebs.json` | Describe volumes and volume attributes; detach owned volumes from owned instances; delete owned volumes |
+| `nwarila-platform_windows-fileserver-ha_reaper_ec2.json` | Read destroy-refresh EC2 metadata; terminate owned instances |
+| `nwarila-platform_windows-fileserver-ha_reaper_eni.json` | Describe ENIs and addresses; detach and delete owned ENIs; detach ENIs from owned instances |
+| `nwarila-platform_windows-fileserver-ha_reaper_iam.json` | Read `nwarila-ec2-profile` and `nwarila-ec2-apprepo-profile` |
+| `nwarila-platform_windows-fileserver-ha_reaper_s3.json` | Manage the two Terraform state objects and list only those two keys |
+| `nwarila-platform_windows-fileserver-ha_reaper_sg.json` | Describe security groups and rules; revoke rules from and delete owned groups |
 
 ## Boundaries present in the documents
 
@@ -85,5 +92,4 @@ and [permission-set inline policies](https://docs.aws.amazon.com/singlesignon/la
 - IAM does not prevent a public IPv4 at launch. The runner has no Elastic IP, internet-gateway or
   route-table actions.
 - KMS cryptographic access uses `Resource: "*"`, bounded by `kms:ViaService` for EC2 in `us-east-1`.
-- The OpenVPN installer grant accepts any version directory under `OpenVPN.net/OpenVPN Community/`
-  but only the `OpenVPN_Community_amd64.msi` file name within it.
+- The OpenVPN installer grant names the one exact key rendered by the pinned framework; the VPN-profile grant names only the profile selected by that framework revision.

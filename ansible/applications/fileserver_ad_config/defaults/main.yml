@@ -2,7 +2,7 @@
 # File: '{{ role_path }}/defaults/main.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Every input this role takes, with the value it takes when the caller says nothing. The loader
+# Every defaulted input this role takes, with the value it takes when the caller says nothing. The
 # merges this with the OS overlay in vars/ and then with the caller's own overrides, so a value
 # here is the floor rather than a suggestion.
 #
