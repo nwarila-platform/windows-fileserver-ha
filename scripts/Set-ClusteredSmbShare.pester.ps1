@@ -106,9 +106,11 @@ BeforeAll {
     If (-not $global:FsHaShareFrozen) { $global:FsHaShareAcl = $AclObject }
   }
   Function Get-SmbShare {
-    Param ([System.String]$Name, [System.String]$ScopeName, [System.String]$ErrorAction)
+    [CmdletBinding()]
+    Param ([System.String]$Name, [System.String]$ScopeName)
+    If ($global:FsHaShareLookupFails) { Write-Error -Message 'injected share lookup failure'; Return }
     If ($global:FsHaShareAmbiguous) { Return @($global:FsHaShareObject, $global:FsHaShareObject) }
-    If ($Null -ne $global:FsHaShareObject -and $global:FsHaShareObject.Name -eq $Name -and $global:FsHaShareObject.ScopeName -eq $ScopeName) { $global:FsHaShareObject }
+    If ($Null -ne $global:FsHaShareObject -and $global:FsHaShareObject.ScopeName -eq $ScopeName) { $global:FsHaShareObject }
   }
   Function Get-SmbShareAccess { Param ([System.String]$Name, [System.String]$ScopeName) @($global:FsHaShareCurrentAccess) }
   Function New-SmbShare {
@@ -152,7 +154,7 @@ BeforeAll {
 }
 
 AfterAll {
-  Remove-Variable -Name 'FsHaShareSid', 'FsHaShareAcl', 'FsHaSharePathExists', 'FsHaShareObject', 'FsHaShareCurrentAccess', 'FsHaShareAmbiguous', 'FsHaShareWrites', 'FsHaShareFrozen' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'FsHaShareSid', 'FsHaShareAcl', 'FsHaSharePathExists', 'FsHaShareObject', 'FsHaShareCurrentAccess', 'FsHaShareAmbiguous', 'FsHaShareLookupFails', 'FsHaShareWrites', 'FsHaShareFrozen' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-ClusteredSmbShare' {
@@ -174,6 +176,7 @@ Describe 'Set-ClusteredSmbShare' {
       [PSCustomObject]@{ AccountName = 'TCN\Domain Users'; AccessControlType = 'Allow'; AccessRight = 'Change' }
     )
     $global:FsHaShareAmbiguous = $False
+    $global:FsHaShareLookupFails = $False
     $global:FsHaShareWrites = @()
     $global:FsHaShareFrozen = $False
   }
@@ -183,6 +186,17 @@ Describe 'Set-ClusteredSmbShare' {
     $Result = & $script:ScriptPath @script:Common -Mode DirectoryAcl | ConvertFrom-Json
     $Result.changed | Should -BeFalse
     $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'honors standalone WhatIf for drift without share writes' {
+    $global:FsHaShareAcl.AreAccessRulesProtected = $False
+
+    $Result = & $script:ScriptPath @script:Common -Mode DirectoryAcl -WhatIf | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.check_mode | Should -BeTrue
+    $global:FsHaShareWrites | Should -HaveCount 0
+    $global:FsHaShareAcl.AreAccessRulesProtected | Should -BeFalse
   }
 
   It 'treats persisted Synchronize on a declared Modify ACE as exact' {
@@ -256,6 +270,16 @@ Describe 'Set-ClusteredSmbShare' {
     $Output | Should -BeNullOrEmpty
     $Context.Changed | Should -BeFalse
     $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'rethrows a scoped share lookup failure before all SMB writes' {
+    $global:FsHaShareLookupFails = $True
+
+    { & $script:ScriptPath @script:Common -Mode Share } |
+      Should -Throw '*injected share lookup failure*'
+
+    $global:FsHaShareWrites | Should -HaveCount 0
+    $global:FsHaShareCurrentAccess | Should -HaveCount 2
   }
 
   It 'exports only serialization-safe primitive result leaves' {

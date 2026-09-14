@@ -146,8 +146,10 @@ BeforeAll {
     $ParserErrors = $Null
     $Null = [System.Management.Automation.Language.Parser]::ParseInput($InnerCommand, [ref]$ParserTokens, [ref]$ParserErrors)
     If ($ParserErrors.Count -gt 0) { Throw 'Encoded mutation command did not parse.' }
-    If ($InnerCommand -notmatch "FromBase64String\('(?<Payload>[A-Za-z0-9+/=]+)'\)") { Throw 'Mutation payload was not encoded.' }
-    $MutationXml = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($Matches.Payload))
+    $PayloadMatches = [System.Text.RegularExpressions.Regex]::Matches($InnerCommand, "FromBase64String\('(?<Payload>[A-Za-z0-9+/=]+)'\)")
+    If ($PayloadMatches.Count -ne 2) { Throw 'Mutation command did not contain exactly two encoded payloads.' }
+    $MutationXml = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($PayloadMatches[0].Groups['Payload'].Value))
+    $global:FsHaTranscriptPath = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($PayloadMatches[1].Groups['Payload'].Value))
     $global:FsHaInnerCommand = $InnerCommand
     $global:FsHaScheduledMutation = [System.Management.Automation.PSSerializer]::Deserialize($MutationXml)
     [PSCustomObject]@{ Execute = $Execute; Argument = $Argument }
@@ -164,30 +166,104 @@ BeforeAll {
       RunLevel        = $RunLevel
       Force           = $Force.IsPresent
     }
+    $global:FsHaTaskExists = $True
+    $global:FsHaTaskState = 'Ready'
+    [PSCustomObject]@{ TaskName = $TaskName; State = $global:FsHaTaskState }
+  }
+  Function Get-ScheduledTask {
+    Param ([System.String]$TaskName)
+    $global:FsHaTaskReads++
+    If ($global:FsHaTaskExists -and $global:FsHaTaskRegistrationVisible) {
+      [PSCustomObject]@{ TaskName = $TaskName; State = $global:FsHaTaskState }
+    }
   }
   Function Start-ScheduledTask {
     Param ([System.String]$TaskName)
     $global:FsHaTaskStarts += $TaskName
-    If ($global:FsHaTaskResult -ne 0) { Return }
-    If ($global:FsHaScheduledMutation.create_cluster) {
-      New-Cluster -Name $global:FsHaScheduledMutation.cluster_name -Node $global:FsHaScheduledMutation.nodes -StaticAddress $global:FsHaScheduledMutation.static_addresses -NoStorage -Force
-    } Else {
-      $Clusters = @(Get-Cluster)
-      If ($Clusters.Count -ne 1) { Throw 'Scheduled mutation could not acquire one local cluster.' }
-      $Cluster = $Clusters[0]
-      If ([System.String]$Cluster.Name -ine [System.String]$global:FsHaScheduledMutation.cluster_name) { Throw 'Scheduled mutation acquired the wrong local cluster.' }
-      ForEach ($MissingNode In $global:FsHaScheduledMutation.missing_nodes) {
-        Add-ClusterNode -InputObject $Cluster -Name $MissingNode -NoStorage
+    $global:FsHaTaskState = 'Running'
+    If ($global:FsHaTranscriptSeedOnStart -and -not [System.String]::IsNullOrWhiteSpace($global:FsHaTranscriptPath)) {
+      [System.IO.File]::WriteAllText($global:FsHaTranscriptPath, 'cleanup transcript proof')
+    }
+  }
+  Function Complete-ScheduledMutation {
+    Param ([System.UInt32]$Result)
+    If ($global:FsHaTaskCompleted) { Return }
+    If (-not [System.String]::IsNullOrWhiteSpace($global:FsHaTranscriptPath)) {
+      [System.IO.File]::WriteAllText($global:FsHaTranscriptPath, 'scheduled mutation proof')
+    }
+    If ($Result -eq 0) {
+      If ($global:FsHaScheduledMutation.create_cluster) {
+        New-Cluster -Name $global:FsHaScheduledMutation.cluster_name -Node $global:FsHaScheduledMutation.nodes -StaticAddress $global:FsHaScheduledMutation.static_addresses -NoStorage -Force
+      } Else {
+        $Clusters = @(Get-Cluster)
+        If ($Clusters.Count -ne 1) { Throw 'Scheduled mutation could not acquire one local cluster.' }
+        $Cluster = $Clusters[0]
+        If ([System.String]$Cluster.Name -ine [System.String]$global:FsHaScheduledMutation.cluster_name) { Throw 'Scheduled mutation acquired the wrong local cluster.' }
+        ForEach ($MissingNode In $global:FsHaScheduledMutation.missing_nodes) {
+          Add-ClusterNode -InputObject $Cluster -Name $MissingNode -NoStorage
+        }
       }
     }
+    $global:FsHaTaskResult = $Result
+    $global:FsHaTaskLastRunTime = $global:FsHaTaskLastRunTime.AddSeconds(1)
+    $global:FsHaTaskState = 'Ready'
+    $global:FsHaTaskCompleted = $True
   }
   Function Get-ScheduledTaskInfo {
     Param ([System.String]$TaskName)
-    [PSCustomObject]@{ LastTaskResult = $global:FsHaTaskResult }
+    $global:FsHaTaskInfoReads++
+    If ($global:FsHaTaskInfoSequence.Count -ge $global:FsHaTaskInfoReads) {
+      $Info = $global:FsHaTaskInfoSequence[$global:FsHaTaskInfoReads - 1]
+      If ($Null -ne $Info -and [System.DateTime]$Info.LastRunTime -gt $global:FsHaTaskLastRunTime -and
+        [System.UInt32]$Info.LastTaskResult -notin [System.UInt32[]]@(267009, 267011, 267045)) {
+        Complete-ScheduledMutation -Result ([System.UInt32]$Info.LastTaskResult)
+      }
+      Return $Info
+    }
+    If ($global:FsHaTaskStarts.Count -eq 0) {
+      Return [PSCustomObject]@{ LastTaskResult = [System.UInt32]267011; LastRunTime = $global:FsHaTaskLastRunTime }
+    }
+    Complete-ScheduledMutation -Result ([System.UInt32]$global:FsHaTaskResult)
+    [PSCustomObject]@{ LastTaskResult = [System.UInt32]$global:FsHaTaskResult; LastRunTime = $global:FsHaTaskLastRunTime }
+  }
+  Function Stop-ScheduledTask {
+    Param ([System.String]$TaskName)
+    $global:FsHaTaskStops += $TaskName
+    If ($global:FsHaTaskStopFails) { Throw 'injected stop failure' }
+    If ($global:FsHaTaskStopLeavesRunning) { Return }
+    $global:FsHaTaskState = 'Ready'
   }
   Function Unregister-ScheduledTask {
     Param ([System.String]$TaskName, [Switch]$Confirm)
     $global:FsHaTaskUnregistrations += $TaskName
+    If ($global:FsHaTaskUnregisterFails) { Throw 'injected unregister failure' }
+    $global:FsHaTaskExists = $False
+  }
+  Function Remove-Item {
+    [CmdletBinding()]
+    Param (
+      [System.String]$LiteralPath,
+      [System.String]$Path,
+      [Switch]$Force,
+      [Switch]$Recurse
+    )
+    $SelectedPath = If ($PSBoundParameters.ContainsKey('LiteralPath')) { $LiteralPath } Else { $Path }
+    If ($global:FsHaTranscriptRemoveFails -and $SelectedPath -eq $global:FsHaTranscriptPath) {
+      $global:FsHaTranscriptRemoveAttempts++
+      Write-Error -Message 'injected transcript removal failure'
+      Return
+    }
+    If ($global:FsHaTranscriptRemoveLeavesFile -and $SelectedPath -eq $global:FsHaTranscriptPath) {
+      $global:FsHaTranscriptRemoveAttempts++
+      Return
+    }
+    Microsoft.PowerShell.Management\Remove-Item @PSBoundParameters
+  }
+  Function Start-Sleep {
+    [CmdletBinding()]
+    Param ([System.Double]$Seconds, [System.Int32]$Milliseconds)
+    If ($global:FsHaSkipSleep) { Return }
+    Microsoft.PowerShell.Utility\Start-Sleep @PSBoundParameters
   }
   Function Invoke-MutationInnerCommand {
     Param (
@@ -229,7 +305,7 @@ BeforeAll {
 
 AfterAll {
   $env:TEMP = $script:OriginalTemp
-  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskResult', 'FsHaTaskUnregistrations', 'FsHaFormationProbeCalls', 'FsHaFormationProbeFailures', 'FsHaFormationServiceStates', 'FsHaFormationOperations' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTranscriptPath', 'FsHaTranscriptSeedOnStart', 'FsHaTranscriptRemoveFails', 'FsHaTranscriptRemoveLeavesFile', 'FsHaTranscriptRemoveAttempts', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskReads', 'FsHaTaskResult', 'FsHaTaskUnregistrations', 'FsHaTaskExists', 'FsHaTaskState', 'FsHaTaskRegistrationVisible', 'FsHaTaskLastRunTime', 'FsHaTaskCompleted', 'FsHaTaskInfoReads', 'FsHaTaskInfoSequence', 'FsHaTaskStops', 'FsHaTaskStopFails', 'FsHaTaskStopLeavesRunning', 'FsHaTaskUnregisterFails', 'FsHaSkipSleep', 'FsHaFormationProbeCalls', 'FsHaFormationProbeFailures', 'FsHaFormationServiceStates', 'FsHaFormationOperations' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-FileServerCluster' {
@@ -253,10 +329,28 @@ Describe 'Set-FileServerCluster' {
     $global:FsHaEligibleDiskReads = 0
     $global:FsHaInnerCommand = ''
     $global:FsHaScheduledMutation = $Null
+    $global:FsHaTranscriptPath = ''
+    $global:FsHaTranscriptSeedOnStart = $False
+    $global:FsHaTranscriptRemoveFails = $False
+    $global:FsHaTranscriptRemoveLeavesFile = $False
+    $global:FsHaTranscriptRemoveAttempts = 0
     $global:FsHaTaskRegistrations = @()
     $global:FsHaTaskStarts = @()
+    $global:FsHaTaskReads = 0
     $global:FsHaTaskResult = 0
     $global:FsHaTaskUnregistrations = @()
+    $global:FsHaTaskExists = $False
+    $global:FsHaTaskState = 'Ready'
+    $global:FsHaTaskRegistrationVisible = $True
+    $global:FsHaTaskLastRunTime = [System.DateTime]'2000-01-01T00:00:00Z'
+    $global:FsHaTaskCompleted = $False
+    $global:FsHaTaskInfoReads = 0
+    $global:FsHaTaskInfoSequence = @()
+    $global:FsHaTaskStops = @()
+    $global:FsHaTaskStopFails = $False
+    $global:FsHaTaskStopLeavesRunning = $False
+    $global:FsHaTaskUnregisterFails = $False
+    $global:FsHaSkipSleep = $False
     $global:FsHaFormationProbeCalls = @()
     $global:FsHaFormationProbeFailures = @{}
     $global:FsHaFormationServiceStates = @{}
@@ -265,13 +359,31 @@ Describe 'Set-FileServerCluster' {
     }
     $global:FsHaFormationOperations = @()
   }
-  AfterEach { Remove-AnsibleContext }
+  AfterEach {
+    Remove-AnsibleContext
+    If (-not [System.String]::IsNullOrWhiteSpace($global:FsHaTranscriptPath) -and
+      (Test-Path -LiteralPath $global:FsHaTranscriptPath)) {
+      Microsoft.PowerShell.Management\Remove-Item -LiteralPath $global:FsHaTranscriptPath -Force -ErrorAction SilentlyContinue
+    }
+  }
 
   It 'returns standalone exact no-change state with no calls' {
     $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | ConvertFrom-Json
     $Result.changed | Should -BeFalse
     $global:FsHaClusterWrites | Should -HaveCount 0
     @($global:FsHaClusterReads | Where-Object NameBound) | Should -HaveCount 0
+  }
+
+  It 'honors standalone WhatIf for drift without cluster writes' {
+    $global:FsHaClusterNodes = @($script:Nodes[0..2])
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password -WhatIf | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.check_mode | Should -BeTrue
+    $global:FsHaClusterWrites | Should -HaveCount 0
+    $global:FsHaTaskRegistrations | Should -HaveCount 0
+    $global:FsHaClusterNodes | Should -Be $script:Nodes[0..2]
   }
 
   It 'exports only serialization-safe primitive result leaves' {
@@ -605,6 +717,148 @@ Describe 'Set-FileServerCluster' {
     $Context = New-AnsibleContext
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | Out-Null
     $Context.Changed | Should -BeFalse
+  }
+
+  It 'requires exactly one scheduled task registration readback before start' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTaskRegistrationVisible = $False
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    $Caught = $Null
+    Try {
+      & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password
+    } Catch {
+      $Caught = $PSItem
+    }
+
+    $Caught.Exception.Message | Should -Match '^Scheduled task registration readback must return exactly one task; found 0\.'
+    $Caught.Exception.Message | Should -Match 'Cleanup failures: task-readback .*cleanup readback must return exactly one task; found 0\.'
+    $global:FsHaTaskStarts | Should -HaveCount 0
+    $global:FsHaTaskReads | Should -Be 2
+    $global:FsHaTaskUnregistrations | Should -HaveCount 0
+  }
+
+  It 'waits through stale runtime data and every documented pending result' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaSkipSleep = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    $Old = [System.DateTime]'2000-01-01T00:00:00Z'
+    $New = [System.DateTime]'2000-01-01T00:00:01Z'
+    $global:FsHaTaskInfoSequence = @(
+      [PSCustomObject]@{ LastRunTime = $Old; LastTaskResult = [System.UInt32]267011 },
+      [PSCustomObject]@{ LastRunTime = $Old; LastTaskResult = [System.UInt32]0 },
+      [PSCustomObject]@{ LastRunTime = $New; LastTaskResult = [System.UInt32]267011 },
+      [PSCustomObject]@{ LastRunTime = $New; LastTaskResult = [System.UInt32]267045 },
+      [PSCustomObject]@{ LastRunTime = $New; LastTaskResult = [System.UInt32]267009 },
+      [PSCustomObject]@{ LastRunTime = $New; LastTaskResult = [System.UInt32]0 }
+    )
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
+      Should -Not -Throw
+
+    $global:FsHaTaskInfoReads | Should -Be 6
+    $global:FsHaTaskUnregistrations | Should -HaveCount 1
+  }
+
+  It 'suppresses unregister after a scheduled task stop failure' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTranscriptSeedOnStart = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    $global:FsHaTaskInfoSequence = @(
+      [PSCustomObject]@{ LastRunTime = [System.DateTime]'2000-01-01T00:00:00Z'; LastTaskResult = [System.UInt32]267011 },
+      $Null
+    )
+    $global:FsHaTaskStopFails = $True
+    $Caught = $Null
+
+    Try {
+      & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password
+    } Catch {
+      $Caught = $PSItem
+    }
+
+    $Caught.Exception.Message | Should -Match '^Scheduled task runtime-info poll must return one object with LastRunTime and LastTaskResult\.'
+    $Caught.Exception.Message | Should -Match 'Cleanup failures: stop-if-running .*injected stop failure'
+    $global:FsHaTaskStops | Should -HaveCount 1
+    $global:FsHaTaskReads | Should -Be 2
+    $global:FsHaTaskUnregistrations | Should -HaveCount 0
+    Test-Path -LiteralPath $global:FsHaTranscriptPath | Should -BeFalse
+  }
+
+  It 'suppresses unregister when a stopped task still reads Running' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTranscriptSeedOnStart = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    $global:FsHaTaskInfoSequence = @(
+      [PSCustomObject]@{ LastRunTime = [System.DateTime]'2000-01-01T00:00:00Z'; LastTaskResult = [System.UInt32]267011 },
+      $Null
+    )
+    $global:FsHaTaskStopLeavesRunning = $True
+    $Caught = $Null
+
+    Try {
+      & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password
+    } Catch {
+      $Caught = $PSItem
+    }
+
+    $Caught.Exception.Message | Should -Match '^Scheduled task runtime-info poll must return one object with LastRunTime and LastTaskResult\.'
+    $Caught.Exception.Message | Should -Match 'Cleanup failures: post-stop-state .*scheduled task is still Running\.'
+    $global:FsHaTaskStops | Should -HaveCount 1
+    $global:FsHaTaskReads | Should -Be 3
+    $global:FsHaTaskUnregistrations | Should -HaveCount 0
+    Test-Path -LiteralPath $global:FsHaTranscriptPath | Should -BeFalse
+  }
+
+  It 'permits unregister after a successful stop and aggregates its failure independently' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTranscriptSeedOnStart = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    $global:FsHaTaskInfoSequence = @(
+      [PSCustomObject]@{ LastRunTime = [System.DateTime]'2000-01-01T00:00:00Z'; LastTaskResult = [System.UInt32]267011 },
+      $Null
+    )
+    $global:FsHaTaskUnregisterFails = $True
+    $Caught = $Null
+
+    Try {
+      & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password
+    } Catch {
+      $Caught = $PSItem
+    }
+
+    $Caught.Exception.Message | Should -Match '^Scheduled task runtime-info poll must return one object with LastRunTime and LastTaskResult\.'
+    $Caught.Exception.Message | Should -Match 'Cleanup failures: unregister .*injected unregister failure'
+    $global:FsHaTaskStops | Should -HaveCount 1
+    $global:FsHaTaskReads | Should -Be 3
+    $global:FsHaTaskUnregistrations | Should -HaveCount 1
+    Test-Path -LiteralPath $global:FsHaTranscriptPath | Should -BeFalse
+  }
+
+  It 'reports transcript removal failure after successful mutation and readback' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTranscriptRemoveFails = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
+      Should -Throw '*cleanup failed*transcript*injected transcript removal failure*'
+
+    $global:FsHaTranscriptRemoveAttempts | Should -Be 1
+    Test-Path -LiteralPath $global:FsHaTranscriptPath | Should -BeTrue
+    $global:FsHaTaskUnregistrations | Should -HaveCount 1
+  }
+
+  It 'reports a transcript that still exists after successful removal' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaTranscriptRemoveLeavesFile = $True
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
+      Should -Throw '*transcript*still exists after removal*'
+
+    $global:FsHaTranscriptRemoveAttempts | Should -Be 1
+    Test-Path -LiteralPath $global:FsHaTranscriptPath | Should -BeTrue
+    $global:FsHaTaskUnregistrations | Should -HaveCount 1
   }
 
   It 'surfaces a failed batch mutation transcript and unregisters the task' {

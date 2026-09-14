@@ -64,6 +64,7 @@ Param (
 #region ------ [ Initialization ] ------------------------------------------------------------ #
 Write-Debug -Message:'Entering Stage: Initialization'
 
+$WhatIfRequested = [System.Boolean]$WhatIfPreference
 $WhatIfPreference = $false
 New-Variable -Force -Name:'LOG_LEVELS' -Option:('Private', 'ReadOnly') -Value:(
   [System.String[]]@('Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal')
@@ -104,7 +105,7 @@ Trap {
 
 $StandaloneRun = $Null -eq (Get-Variable -Name:'Ansible' -ValueOnly -ErrorAction:'SilentlyContinue')
 If ($StandaloneRun) {
-  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $False; Failed = $False; Result = $Null }
+  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $WhatIfRequested; Failed = $False; Result = $Null }
 }
 $Ansible.Changed = $False
 #endregion --- [ Initialization ] ------------------------------------------------------------ #

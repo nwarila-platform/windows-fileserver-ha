@@ -125,6 +125,17 @@ Describe 'Set-ClusterSharedDisks' {
     $global:FsHaDiskClusterInputs | Should -Be @('TCNAW-FSCL01', 'TCNAW-FSCL01')
   }
 
+  It 'honors standalone WhatIf for drift without disk writes' {
+    $global:FsHaDiskOwners['Cluster Disk 9'] = @('tcnaw-hafs01a')
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Disk $script:Declaration -WhatIf | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.check_mode | Should -BeTrue
+    $global:FsHaDiskWrites | Should -HaveCount 0
+    $global:FsHaDiskOwners['Cluster Disk 9'] | Should -Be @('tcnaw-hafs01a')
+  }
+
   It 'exports only serialization-safe primitive result leaves' {
     $RawResource = [System.IO.MemoryStream]::new()
     Try {

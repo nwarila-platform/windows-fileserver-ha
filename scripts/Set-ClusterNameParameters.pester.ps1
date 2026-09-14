@@ -112,6 +112,17 @@ Describe 'Set-ClusterNameParameters' {
     $global:FsHaNameClusterInputs | Should -Be @('TCNAW-FSCL01')
   }
 
+  It 'honors standalone WhatIf for drift without parameter writes' {
+    $global:FsHaNameValues.HostRecordTTL = 1200
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -ResourceName 'Cluster Name' -RegisterAllProvidersIP 0 -HostRecordTTL 300 -WhatIf | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.check_mode | Should -BeTrue
+    $global:FsHaNameWrites | Should -HaveCount 0
+    $global:FsHaNameValues.HostRecordTTL | Should -Be 1200
+  }
+
   It 'exports only serialization-safe primitive result leaves' {
     $RawResource = [System.IO.MemoryStream]::new()
     Try {

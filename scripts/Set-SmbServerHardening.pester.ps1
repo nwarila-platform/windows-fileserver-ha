@@ -117,6 +117,15 @@ Describe 'Set-SmbServerHardening' {
       $global:FsHaSmbWrites | Should -HaveCount 0
     }
 
+    It 'honors standalone WhatIf for drift without SMB writes' {
+      $Result = & $script:ScriptPath -Setting @{ EncryptData = $True } -WhatIf | ConvertFrom-Json
+
+      $Result.changed | Should -BeTrue
+      $Result.check_mode | Should -BeTrue
+      $global:FsHaSmbWrites | Should -HaveCount 0
+      $global:FsHaSmbCurrent.EncryptData | Should -BeFalse
+    }
+
     It 'mutates only the drifted properties and reports each drift record' {
       $Desired = @{
         EnableSMB1Protocol       = $False   # drifted
@@ -143,6 +152,20 @@ Describe 'Set-SmbServerHardening' {
 
       $Result.changed | Should -BeFalse
       $global:FsHaSmbWrites | Should -HaveCount 0
+    }
+
+    It 'normalizes a drifted Boolean string before mutation and readback' {
+      $global:FsHaSmbCurrent.RequireSecuritySignature = $True
+
+      $Result = & $script:ScriptPath -Setting @{ RequireSecuritySignature = 'False' } |
+        ConvertFrom-Json
+
+      $Result.changed | Should -BeTrue
+      $global:FsHaSmbWrites | Should -HaveCount 1
+      $global:FsHaSmbWrites[0].RequireSecuritySignature | Should -BeOfType ([System.Boolean])
+      $global:FsHaSmbWrites[0].RequireSecuritySignature | Should -BeFalse
+      $global:FsHaSmbCurrent.RequireSecuritySignature | Should -BeFalse
+      $Result.drift[0].desired | Should -BeFalse
     }
 
     It 'fails before any mutation when a declared property does not exist' {
