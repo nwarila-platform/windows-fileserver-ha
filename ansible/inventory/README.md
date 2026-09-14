@@ -47,3 +47,11 @@ Export `GITHUB_REPOSITORY_ID`, `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` plus AWS 
 point `-i` at `aws_ec2.yml` while the instance still exists. Set `ENVIRONMENT` if the deployment is
 not the default `test`. The play asserts its ownership contract, so a run whose tags do not match
 fails closed.
+
+The composed local command is:
+
+```bash
+ENVIRONMENT=dev scripts/compose-and-run.sh \
+  -e "aws_account_id=${AWS_ACCOUNT_ID}" \
+  -e 'aws_region=us-east-1'
+```

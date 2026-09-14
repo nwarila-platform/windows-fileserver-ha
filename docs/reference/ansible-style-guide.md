@@ -257,7 +257,7 @@ clobber, verified at the module source). These stay `quiet: true` with an action
 - **SEEDED (2026-08-13) — first-class PowerShell scripts.** Multi-statement PowerShell
   is a first-class script executed through `ansible.windows.win_powershell` with typed
   `parameters:` and a deterministic `$Ansible.Changed` verdict — never a `win_shell`
-  block scalar. The script lives ONCE under `powershell/` with its paired
+  block scalar. The script lives ONCE under `scripts/` with its paired
   `.pester.ps1` spec (org contract: NWarila/powershell-template); the role carries
   only a `files/<Name>.ps1.stub` marker that `scripts/materialize-role-scripts.sh`
   resolves at build time, and the materialized copy is never committed. No

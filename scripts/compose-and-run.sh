@@ -12,7 +12,7 @@
 #   3. Runs the selected playbook with the framework's ansible.cfg as the chassis
 #      (its roles_path resolves roles by bare name).
 #
-# Usage: scripts/compose-and-run.sh [-e env=dev] [any extra ansible-playbook args...]
+# Usage: ENVIRONMENT=dev scripts/compose-and-run.sh [any extra ansible-playbook args...]
 #        COMPOSE_PLAYBOOK=<name>.yml to select a playbook under ansible/playbooks/ (default fileserver-aws.yml).
 #        COMPOSE_INVENTORY=<path> to select a repository-relative inventory file.
 #
@@ -24,7 +24,11 @@ COMPOSE_DIR="${REPO_ROOT}/.compose"
 FRAMEWORK_DIR="${COMPOSE_DIR}/ansible-framework"
 FRAMEWORK_REMOTE='git@github.com:nwarila-platform/ansible-framework.git'
 PIN_FILE="${REPO_ROOT}/.github/ansible-framework-pin"
-ANSIBLE_PLAYBOOK="${ANSIBLE_PLAYBOOK:-/root/.local/bin/ansible-playbook}"
+ANSIBLE_PLAYBOOK="${ANSIBLE_PLAYBOOK:-ansible-playbook}"
+command -v "${ANSIBLE_PLAYBOOK}" >/dev/null || {
+    echo "!! ${ANSIBLE_PLAYBOOK} not on PATH" >&2
+    exit 1
+}
 
 [ -f "${PIN_FILE}" ] || { echo "!! missing ${PIN_FILE}" >&2; exit 1; }
 PIN="$(tr -d '[:space:]' < "${PIN_FILE}")"
@@ -118,17 +122,12 @@ if [ ! -d "${FRAMEWORK_DIR}/.git" ]; then
     git clone --quiet "${FRAMEWORK_REMOTE}" "${FRAMEWORK_DIR}"
 fi
 git -C "${FRAMEWORK_DIR}" fetch --quiet origin
-git -C "${FRAMEWORK_DIR}" checkout --quiet --detach "${PIN}"
+git -C "${FRAMEWORK_DIR}" checkout --quiet --force --detach "${PIN}"
 echo ">> Framework pinned at $(git -C "${FRAMEWORK_DIR}" rev-parse --short HEAD)"
 
-# Both source trees track only files/<Name>.ps1.stub. A previous repository overlay survives the
-# framework checkout, so clear it before the framework materializer validates every stub it finds.
-# Materialize both source trees before the overlay so rsync carries their runnable .ps1 files.
-shopt -s nullglob
-for stale_role in "${REPO_ROOT}"/ansible/applications/*; do
-    rm -rf "${FRAMEWORK_DIR}/applications/$(basename "${stale_role}")"
-done
-shopt -u nullglob
+# Remove every ignored/untracked prior overlay, including a role renamed or retired since the
+# preceding run. Framework-owned role files are tracked and therefore survive this cleanup.
+git -C "${FRAMEWORK_DIR}" clean --quiet -ffdx -- applications/
 
 LC_ALL=C bash "${REPO_ROOT}/scripts/materialize-role-scripts.sh"
 

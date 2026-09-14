@@ -106,24 +106,29 @@ jobs:
           role-session-name: aws-reaper-${{ github.run_id }}
           role-duration-seconds: 3600
 
-      # Instances are the resources that bill by the minute, so they are the trigger. The
-      # secondary debris a stack leaves (groups, interfaces, state) is destroyed with the
-      # stack below, and anything instanceless is cleaned by the next deploy's predecessor
-      # step at zero standing cost.
-      - name: Look for stranded instances
+      - name: Look for stranded instances or volumes
         id: stranded
         if: steps.live.outputs.stand_down == 'false'
+        env:
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
-          ids="$(aws ec2 describe-instances \
+          instances="$(aws ec2 describe-instances \
             --filters "Name=tag:Repository,Values=${GITHUB_REPOSITORY}" \
+                      "Name=tag:RepositoryId,Values=${GITHUB_REPOSITORY_ID}" \
+                      "Name=tag:ManagedBy,Values=Terraform" \
                       "Name=instance-state-name,Values=pending,running,stopping,stopped" \
             --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' ' ')"
-          if [ -z "${ids}" ]; then
-            echo 'no stranded instances; nothing to reap'
+          volumes="$(aws ec2 describe-volumes \
+            --filters "Name=tag:Repository,Values=${GITHUB_REPOSITORY}" \
+                      "Name=tag:RepositoryId,Values=${GITHUB_REPOSITORY_ID}" \
+                      "Name=tag:ManagedBy,Values=Terraform" \
+            --query 'Volumes[].VolumeId' --output text | tr '\t' ' ')"
+          if [ -z "${instances}${volumes}" ]; then
+            echo 'no stranded instances or volumes; nothing to reap'
             echo 'found=false' >> "${GITHUB_OUTPUT}"
           else
-            echo "::warning::stranded instance(s) with no live deploy: ${ids}"
+            echo "::warning::stranded resources with no live deploy: instances=[${instances}] volumes=[${volumes}]"
             echo 'found=true' >> "${GITHUB_OUTPUT}"
           fi
 
@@ -199,21 +204,28 @@ jobs:
             -var "run_id=${GITHUB_RUN_ID}"                                   \
             -var "runner_ip=${RUNNER_IP}"
 
-      # The destroy is judged by the account, not by terraform's report of itself: state
-      # that lost track of an instance leaves it running and this is the step that says so.
-      - name: Prove nothing tagged to this repository is still running
+      - name: Prove no owned instances or volumes survived the reap
         if: steps.stranded.outputs.found == 'true'
+        env:
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
-          left="$(aws ec2 describe-instances \
+          instances="$(aws ec2 describe-instances \
             --filters "Name=tag:Repository,Values=${GITHUB_REPOSITORY}" \
+                      "Name=tag:RepositoryId,Values=${GITHUB_REPOSITORY_ID}" \
+                      "Name=tag:ManagedBy,Values=Terraform" \
                       "Name=instance-state-name,Values=pending,running,stopping,stopped" \
             --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' ' ')"
-          if [ -n "${left}" ]; then
-            echo "::error::instances survived the reap and need a human: ${left}"
+          volumes="$(aws ec2 describe-volumes \
+            --filters "Name=tag:Repository,Values=${GITHUB_REPOSITORY}" \
+                      "Name=tag:RepositoryId,Values=${GITHUB_REPOSITORY_ID}" \
+                      "Name=tag:ManagedBy,Values=Terraform" \
+            --query 'Volumes[].VolumeId' --output text | tr '\t' ' ')"
+          if [ -n "${instances}${volumes}" ]; then
+            echo "::error::owned resources survived the reap: instances=[${instances}] volumes=[${volumes}]"
             exit 1
           fi
-          echo 'the stack is gone; nothing tagged to this repository is running'
+          echo 'no owned instances or volumes survived the reap'
 
   report:
     name: Reaper incident
@@ -246,7 +258,7 @@ jobs:
               )] | sort_by(.number) | (.[0].number // empty)
             ' <<< "${issue_json}")"
 
-          if [ "${REAP_RESULT}" != failure ]; then
+          if [ "${REAP_RESULT}" = success ]; then
             if [ -n "${issue_number}" ] && \
               [ "$(gh issue view "${issue_number}" --repo "${GITHUB_REPOSITORY}" --json state --jq .state)" = OPEN ]; then
               gh issue close "${issue_number}" --repo "${GITHUB_REPOSITORY}" \

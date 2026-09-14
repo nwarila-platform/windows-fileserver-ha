@@ -20,7 +20,7 @@
 # cross as typed module options — never Jinja spliced into the script source — which is what
 # keeps the split_args/injection surface at zero.
 #
-# The referenced .ps1 is MATERIALIZED from powershell/ by scripts/materialize-role-scripts.sh
+# The referenced .ps1 is MATERIALIZED from scripts/ by scripts/materialize-role-scripts.sh
 # (the role tracks only files/Set-SmbServerHardening.ps1.stub); run it before this role.
 - name: 'MAIN | Converge The SMB Server Hardening Baseline'
   when:

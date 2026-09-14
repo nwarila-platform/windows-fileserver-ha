@@ -10,7 +10,7 @@
 # Note the deliberate absence: materialized role scripts (the .ps1 a role stub resolves to,
 # e.g. ansible/applications/fileserver/files/Set-SmbServerHardening.ps1) are build artifacts
 # of scripts/materialize-role-scripts.sh and are never allowlisted. Only the .ps1.stub marker
-# is tracked; the script itself is tracked once, under powershell/.
+# is tracked; the script itself is tracked once, under scripts/.
 #
 # =========================================================================================== #
 
