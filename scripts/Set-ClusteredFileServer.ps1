@@ -63,6 +63,7 @@ Param (
 #region ------ [ Script ] -------------------------------------------------------------------- #
 #region ------ [ Initialization ] ------------------------------------------------------------ #
 Write-Debug -Message:'Entering Stage: Initialization'
+$WhatIfRequested = [System.Boolean]$WhatIfPreference
 $WhatIfPreference = $false
 New-Variable -Force -Name:'LOG_LEVELS' -Option:('Private', 'ReadOnly') -Value:(
   [System.String[]]@('Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal')
@@ -98,7 +99,7 @@ Trap {
 }
 $StandaloneRun = $Null -eq (Get-Variable -Name:'Ansible' -ValueOnly -ErrorAction:'SilentlyContinue')
 If ($StandaloneRun) {
-  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $False; Failed = $False; Result = $Null }
+  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $WhatIfRequested; Failed = $False; Result = $Null }
 }
 $Ansible.Changed = $False
 #endregion --- [ Initialization ] ------------------------------------------------------------ #
@@ -551,11 +552,6 @@ $ExitCode = 1
     $ExtraIps = @($Current.ip_resources | Where-Object -FilterScript { $PSItem.address -notin $DesiredAddresses })
     If ($ExtraIps.Count -gt 0) {
       $IpTransaction = $True
-      ForEach ($Extra In $ExtraIps) {
-        If (-not $Mutation.create_role -and $Extra.enable_dhcp -ne 0) {
-          Throw ('Refusing to prune IP resource {0}: DHCP is enabled.' -f $Extra.name)
-        }
-      }
       $OtherNameResources = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript {
           [System.String]$PSItem.ResourceType -eq 'Network Name' -and
           [System.String]$PSItem.Name -ine [System.String]$Current.name_resource.Name
@@ -999,18 +995,24 @@ If ($Null -ne $After -and $After.physical_disks.Count -eq 1) {
     $AvailableStorageGroup = $AvailableStorageGroups[0]
     ForEach ($Resource In $RemainingDisks) {
       $PossibleOwners = @((Get-ClusterOwnerNode -InputObject $Resource).OwnerNodes | ForEach-Object -Process { [System.String]$PSItem.Name })
-      If ([System.String]$AvailableStorageGroup.OwnerNode -iin $PossibleOwners) { Continue }
-      $Actions.Add(('move_available_storage:{0}' -f $Resource.Name))
-      $Actions.Add(('start_shared_disk:{0}' -f $Resource.Name))
+      $OwnerCompatible = [System.String]$AvailableStorageGroup.OwnerNode -iin $PossibleOwners
+      $ResourceOnline = [System.String]$Resource.State -eq 'Online'
+      If ($OwnerCompatible -and $ResourceOnline) { Continue }
+      If (-not $OwnerCompatible) { $Actions.Add(('move_available_storage:{0}' -f $Resource.Name)) }
+      If (-not $OwnerCompatible -or -not $ResourceOnline) { $Actions.Add(('start_shared_disk:{0}' -f $Resource.Name)) }
       If ($Ansible.CheckMode) { Continue }
-      $TargetOwner = $PossibleOwners[0]
-      $Null = Move-ClusterGroup -InputObject $AvailableStorageGroup -Node $TargetOwner -Wait 600
-      $AvailableStorageGroups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq 'Available Storage' })
-      If ($AvailableStorageGroups.Count -ne 1 -or [System.String]$AvailableStorageGroups[0].OwnerNode -ine $TargetOwner) {
-        Throw ('Available Storage failed owner readback for Physical Disk resource {0}.' -f $Resource.Name)
+      If (-not $OwnerCompatible) {
+        $TargetOwner = $PossibleOwners[0]
+        $Null = Move-ClusterGroup -InputObject $AvailableStorageGroup -Node $TargetOwner -Wait 600
+        $AvailableStorageGroups = @(Get-ClusterGroup -InputObject $Cluster | Where-Object -FilterScript { [System.String]$PSItem.Name -ieq 'Available Storage' })
+        If ($AvailableStorageGroups.Count -ne 1 -or [System.String]$AvailableStorageGroups[0].OwnerNode -ine $TargetOwner) {
+          Throw ('Available Storage failed owner readback for Physical Disk resource {0}.' -f $Resource.Name)
+        }
+        $AvailableStorageGroup = $AvailableStorageGroups[0]
       }
-      $AvailableStorageGroup = $AvailableStorageGroups[0]
-      $Null = Start-ClusterResource -InputObject $Resource -Wait 300
+      If (-not $OwnerCompatible -or -not $ResourceOnline) {
+        $Null = Start-ClusterResource -InputObject $Resource -Wait 300
+      }
       $ResourceReadback = @(Get-ClusterResource -InputObject $Cluster | Where-Object -FilterScript {
           [System.String]$PSItem.ResourceType -eq 'Physical Disk' -and [System.String]$PSItem.Name -ieq [System.String]$Resource.Name
         })

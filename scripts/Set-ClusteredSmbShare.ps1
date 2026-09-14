@@ -69,6 +69,7 @@ Param (
 #region ------ [ Script ] -------------------------------------------------------------------- #
 #region ------ [ Initialization ] ------------------------------------------------------------ #
 Write-Debug -Message:'Entering Stage: Initialization'
+$WhatIfRequested = [System.Boolean]$WhatIfPreference
 $WhatIfPreference = $false
 New-Variable -Force -Name:'LOG_LEVELS' -Option:('Private', 'ReadOnly') -Value:(
   [System.String[]]@('Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal')
@@ -104,7 +105,7 @@ Trap {
 }
 $StandaloneRun = $Null -eq (Get-Variable -Name:'Ansible' -ValueOnly -ErrorAction:'SilentlyContinue')
 If ($StandaloneRun) {
-  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $False; Failed = $False; Result = $Null }
+  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $WhatIfRequested; Failed = $False; Result = $Null }
 }
 $Ansible.Changed = $False
 #endregion --- [ Initialization ] ------------------------------------------------------------ #
@@ -249,7 +250,8 @@ $GetNtfsState = {
 
 $GetShareState = {
   Param ([System.String]$ShareName, [System.String]$ShareScope, [System.Object[]]$DesiredAccess)
-  $Shares = @(Get-SmbShare -Name $ShareName -ScopeName $ShareScope -ErrorAction SilentlyContinue)
+  $Shares = @(Get-SmbShare -ScopeName $ShareScope -ErrorAction Stop |
+      Where-Object -FilterScript { [System.String]$PSItem.Name -ieq $ShareName })
   If ($Shares.Count -gt 1) { Throw ('Share {0} in scope {1} is ambiguous.' -f $ShareName, $ShareScope) }
   If ($Shares.Count -eq 0) { Return [PSCustomObject]@{ share = $Null; access = @(); canonical_access = @() } }
   $Access = @(Get-SmbShareAccess -Name $ShareName -ScopeName $ShareScope)

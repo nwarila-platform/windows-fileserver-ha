@@ -186,6 +186,19 @@ Describe 'Set-ClusterDirectoryRights' {
       $global:StubSetAclCalls | Should -Be 0
     }
 
+    It 'honors standalone WhatIf for drift without directory writes' {
+      Reset-Stubs -Acl @{ $script:ClusterPath = (New-StubAcl); $script:FileServerPath = (New-StubAcl) }
+
+      $r = & $script:ScriptPath -AccountName 'svc-fscluster-mgr' -ClusterName 'TCNAW-FSCL01' `
+        -FileServerName 'TCNAW-HAFS01' -WhatIf | ConvertFrom-Json
+
+      $r.changed | Should -BeTrue
+      $r.check_mode | Should -BeTrue
+      $global:StubSetAclCalls | Should -Be 0
+      $global:StubAcl[$script:ClusterPath].Access | Should -HaveCount 0
+      $global:StubAcl[$script:FileServerPath].Access | Should -HaveCount 0
+    }
+
     It 'applies only the missing grant when one is already held' {
       Reset-Stubs -Acl @{
         $script:ClusterPath    = (New-StubAcl -Access @((New-StubAce -Sid $script:AccountSid)))

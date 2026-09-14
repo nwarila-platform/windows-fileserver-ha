@@ -360,7 +360,7 @@
         - name: 'MAIN | Run The Clustered File Server Role Convergence'
           # The connection password is reused only for the delegation-capable batch logon.
           no_log: true
-          async: 1200
+          async: 1320
           poll: 15
           register: '__fileserver_clustered_role__'
           vars:
@@ -373,6 +373,7 @@
             parameters:
               ClusterName: "{{ fileserver_running.cluster.name }}"
               RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+              TimeoutSeconds: 1200
               HomeVolumeId: "{{ home_disk.volume_id }}"
               Owners: "{{ home_disk.owners }}"
               Password: "{{ ansible_password }}"

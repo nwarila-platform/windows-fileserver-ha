@@ -605,6 +605,18 @@ Describe 'Set-ClusteredFileServer' {
     $Context.Result.msg | Should -Be 'Clustered file-server role already matches.'
   }
 
+  It 'keeps the 1200 second script deadline inside a 1320 second outer deadline' {
+    $TimeoutParameter = @($script:ScriptAst.ParamBlock.Parameters | Where-Object -FilterScript {
+        $PSItem.Name.VariablePath.UserPath -eq 'TimeoutSeconds'
+      })
+
+    $TimeoutParameter | Should -HaveCount 1
+    $TimeoutParameter[0].DefaultValue.SafeGetValue() | Should -Be 1200
+    $script:PlaybookText | Should -Match '(?m)^\s+async:\s+1320\s*$'
+    $script:PlaybookText | Should -Match '(?m)^\s+TimeoutSeconds:\s+1200\s*$'
+    (1320 - 1200) | Should -Be 120
+  }
+
   It 'D2-ACTION-FILE stages a bounded absolute terminal File action after both ACL readbacks' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
@@ -758,6 +770,17 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleWrites | Should -HaveCount 0
     $global:FsHaRoleClusterReads | Should -Be 1
     @($global:FsHaRoleClusterInputs | Where-Object { $PSItem -ne 'TCNAW-FSCL01' }) | Should -HaveCount 0
+  }
+
+  It 'honors standalone WhatIf for drift without role writes' {
+    $global:FsHaRoleResources = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.Name -ne 'IP Address 10.0.33.12' })
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password -WhatIf | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.check_mode | Should -BeTrue
+    $global:FsHaRoleWrites | Should -HaveCount 0
+    @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.Name -eq 'IP Address 10.0.33.12' }) | Should -HaveCount 0
   }
 
   It 'exports only serialization-safe primitive result leaves' {
@@ -1004,6 +1027,23 @@ Describe 'Set-ClusteredFileServer' {
     $global:FsHaRoleWrites | Should -HaveCount 0
   }
 
+  It 'starts an Offline remaining disk whose current owner is already compatible' {
+    $Remaining = @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.Name -eq 'Cluster Disk 10' })[0]
+    $Remaining.State = 'Offline'
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.actions | Should -Be @('start_shared_disk:Cluster Disk 10')
+    @($global:FsHaRoleWrites | ForEach-Object -Process { $PSItem.Command }) | Should -Be @('StartDisk')
+    $Remaining.State | Should -Be 'Online'
+
+    $global:FsHaRoleWrites = @()
+    $Second = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | ConvertFrom-Json
+    $Second.changed | Should -BeFalse
+    $global:FsHaRoleWrites | Should -HaveCount 0
+  }
+
   It 'removes an arbitrary extra IP in one stop-start transaction' {
     $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
     $global:FsHaRoleResources += New-Resource -Name 'Observed AZ A Artifact 2' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.32.0'; Network = 'Cluster Network 2'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 0 }
@@ -1014,7 +1054,7 @@ Describe 'Set-ClusteredFileServer' {
     @($global:FsHaRoleWrites | Where-Object -FilterScript { $PSItem.Command -eq 'StartGroup' }) | Should -HaveCount 1
   }
 
-  It 'refuses to prune a DHCP-enabled extra IP before any cluster write' {
+  It 'converges an interrupted creation residue carrying one extra DHCP IP' {
     $global:FsHaRoleOwners = @('tcnaw-hafs02a', 'tcnaw-hafs01a')
     & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | Out-Null
     $global:FsHaRoleResources += New-Resource -Name 'DHCP Artifact' -Type 'IP Address' -Group 'TCNAW-HAFS01' -Parameters @{ Address = '10.0.0.0'; Network = 'Cluster Network 1'; SubnetMask = $global:FsHaRoleNetworkMask; EnableDhcp = 1 }
@@ -1022,8 +1062,17 @@ Describe 'Set-ClusteredFileServer' {
 
     $InnerResult = Invoke-RoleMutationInner -Command $global:FsHaRoleInnerCommand
 
-    $InnerResult.exit_code | Should -Be 1
-    $InnerResult.transcript | Should -Match 'Refusing to prune IP resource DHCP Artifact: DHCP is enabled.'
+    $InnerResult.exit_code | Should -Be 0
+    @($global:FsHaRoleResources | Where-Object -FilterScript { $PSItem.Name -eq 'DHCP Artifact' }) | Should -HaveCount 0
+    @($global:FsHaRoleResources | Where-Object -FilterScript {
+        $PSItem.ResourceType -eq 'IP Address' -and $PSItem.OwnerGroup -eq 'TCNAW-HAFS01'
+      } | ForEach-Object -Process { $PSItem.Parameters.Address } | Sort-Object) | Should -Be @('10.0.1.12', '10.0.33.12')
+    $global:FsHaRoleDependency | Should -Be '[IP Address 10.0.1.12] or [IP Address 10.0.33.12]'
+    $global:FsHaRoleGroup.State | Should -Be 'Online'
+
+    $global:FsHaRoleWrites = @()
+    $Second = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -RoleName 'TCNAW-HAFS01' -HomeVolumeId 'vol-0abc123' -Owners $script:Owners -StaticAddress $script:Addresses -IgnoredNetworkAddress $script:Ignored -Password $script:Password | ConvertFrom-Json
+    $Second.changed | Should -BeFalse
     $global:FsHaRoleWrites | Should -HaveCount 0
   }
 

@@ -57,7 +57,7 @@
   PositionalBinding = $False,
   RemotingCapability = 'PowerShell',
   SupportsPaging = $False,
-  SupportsShouldProcess = $False
+  SupportsShouldProcess = $True
 )]
 Param (
   [Parameter(
@@ -98,13 +98,13 @@ Param (
 
 #region ------ [ Initialization ] ------------------------------------------------------------ #
 Write-Debug -Message:'Entering Stage: Initialization'
+$WhatIfRequested = [System.Boolean]$WhatIfPreference
+$WhatIfPreference = $false
 
-# Initialize STATIC log level names, indexed by LogLevel digit position.
 New-Variable -Force -Name:'LOG_LEVELS' -Option:('Private', 'ReadOnly') -Value:(
   [System.String[]]@('Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal')
 )
 
-# Initialize the custom stream preferences; the built-in ones already exist.
 New-Variable -Verbose:$False -Force -Name:'ErrorPreference' -Value:(
   [System.Management.Automation.ActionPreference]::Stop
 )
@@ -112,15 +112,12 @@ New-Variable -Verbose:$False -Force -Name:'FatalPreference' -Value:(
   [System.Management.Automation.ActionPreference]::Stop
 )
 
-# Configure log levels based on the LogLevel parameter.
 For ($L = 0; $L -lt 6; $L++) {
   Set-Variable -Verbose:$False -Force -Name:('{0}Preference' -f $LOG_LEVELS[$L]) -Value:(
     [System.Int32]::Parse([System.String]$LogLevel[$L]) -as [System.Management.Automation.ActionPreference]
   )
 }
 
-# Configure the debug levels: first digit ErrorActionPreference, second digit
-# Set-PSDebug, third digit Set-StrictMode.
 $ErrorActionPreference = [System.Management.Automation.ActionPreference][System.Int32]::Parse($DebugLevel.Substring(0, 1))
 Switch ($DebugLevel.Substring(1, 1)) {
   '0' { Set-PSDebug -Off }
@@ -142,7 +139,6 @@ Trap {
   # Diagnostics are wrapped so a partially-populated error record can never
   # replace the original failure with a StrictMode property error.
   Try {
-    # Write debug statement if the invoking line is available.
     If ($PSItem.Exception.PSObject.Properties.Name -contains 'ErrorRecord') {
       Write-Debug -Message:(
         'Failed to execute command: {0}' -f [System.String]$PSItem.Exception.ErrorRecord.InvocationInfo.Line
@@ -175,7 +171,7 @@ $StandaloneRun = $Null -eq (Get-Variable -Name:'Ansible' -ValueOnly -ErrorAction
 If ($StandaloneRun) {
   $Ansible = [PSCustomObject]@{
     Changed   = $True
-    CheckMode = $False
+    CheckMode = $WhatIfRequested
     Failed    = $False
     Result    = $Null
   }
@@ -217,10 +213,18 @@ $Drift = @(
     If ($Null -eq $LiveProperty) {
       Throw ('SMB server configuration exposes no property named {0}. Declared names must be Get/Set-SmbServerConfiguration properties; failing before any mutation.' -f $Name)
     }
-    If ("$($LiveProperty.Value)".Trim() -ne "$($Desired[$Name])".Trim()) {
+    $DesiredValue = $Desired[$Name]
+    If ($LiveProperty.Value -is [System.Boolean] -and $DesiredValue -is [System.String]) {
+      $ParsedDesired = $False
+      If (-not [System.Boolean]::TryParse($DesiredValue.Trim(), [ref]$ParsedDesired)) {
+        Throw ('SMB server configuration property {0} requires a Boolean value.' -f $Name)
+      }
+      $DesiredValue = $ParsedDesired
+    }
+    If ("$($LiveProperty.Value)".Trim() -ne "$DesiredValue".Trim()) {
       [PSCustomObject]@{
         current = $LiveProperty.Value
-        desired = $Desired[$Name]
+        desired = $DesiredValue
         name    = $Name
       }
     }
@@ -249,7 +253,7 @@ If ($Drift.Count -eq 0) {
     # rewrite converged values and bury the audit trail in noise.
     $ApplySplat = @{}
     ForEach ($Item In $Drift) {
-      $ApplySplat[$Item.name] = $Desired[$Item.name]
+      $ApplySplat[$Item.name] = $Item.desired
     }
     Set-SmbServerConfiguration @ApplySplat -Force -Confirm:$False
 
@@ -258,7 +262,7 @@ If ($Drift.Count -eq 0) {
     $SmbConfiguration = Get-SmbServerConfiguration
     $ResidualNames = @(
       ForEach ($Item In $Drift) {
-        If ("$($SmbConfiguration.PSObject.Properties[$Item.name].Value)".Trim() -ne "$($Desired[$Item.name])".Trim()) {
+        If ("$($SmbConfiguration.PSObject.Properties[$Item.name].Value)".Trim() -ne "$($Item.desired)".Trim()) {
           $Item.name
         }
       }

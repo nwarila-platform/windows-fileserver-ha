@@ -59,6 +59,7 @@ Param (
 #region ------ [ Script ] -------------------------------------------------------------------- #
 #region ------ [ Initialization ] ------------------------------------------------------------ #
 Write-Debug -Message:'Entering Stage: Initialization'
+$WhatIfRequested = [System.Boolean]$WhatIfPreference
 $WhatIfPreference = $false
 New-Variable -Force -Name:'LOG_LEVELS' -Option:('Private', 'ReadOnly') -Value:(
   [System.String[]]@('Verbose', 'Debug', 'Information', 'Warning', 'Error', 'Fatal')
@@ -94,7 +95,7 @@ Trap {
 }
 $StandaloneRun = $Null -eq (Get-Variable -Name:'Ansible' -ValueOnly -ErrorAction:'SilentlyContinue')
 If ($StandaloneRun) {
-  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $False; Failed = $False; Result = $Null }
+  $Ansible = [PSCustomObject]@{ Changed = $True; CheckMode = $WhatIfRequested; Failed = $False; Result = $Null }
 }
 $Ansible.Changed = $False
 #endregion --- [ Initialization ] ------------------------------------------------------------ #
@@ -217,7 +218,8 @@ Try {
     Param ([System.Object]$Mutation, [System.String]$RunAsPassword, [System.Int32]$DeadlineSeconds)
     $TaskName = 'Set-FileServerCluster-{0}' -f [System.Guid]::NewGuid().ToString('N')
     $TranscriptPath = Join-Path -Path $env:TEMP -ChildPath ('{0}.log' -f $TaskName)
-    $TaskRegistered = $False
+    $TaskRegistrationAttempted = $False
+    $PrimaryError = $Null
     Try {
       $MutationXml = [System.Management.Automation.PSSerializer]::Serialize($Mutation)
       $MutationPayload = [System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($MutationXml))
@@ -334,14 +336,34 @@ Exit $ExitCode
       $EncodedCommand = [System.Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($InnerCommand))
       $Action = New-ScheduledTaskAction -Execute (Join-Path -Path $PSHOME -ChildPath 'powershell.exe') -Argument ('-NoLogo -NoProfile -NonInteractive -EncodedCommand {0}' -f $EncodedCommand)
       $CurrentUser = & $GetCurrentIdentityName
+      $TaskRegistrationAttempted = $True
       $Null = Register-ScheduledTask -TaskName $TaskName -Action $Action -User $CurrentUser -Password $RunAsPassword -RunLevel Highest -Force
-      $TaskRegistered = $True
+      $RegisteredTask = @(Get-ScheduledTask -TaskName $TaskName | Where-Object -FilterScript { $Null -ne $PSItem })
+      If ($RegisteredTask.Count -ne 1) {
+        Throw ('Scheduled task registration readback must return exactly one task; found {0}.' -f
+          $RegisteredTask.Count)
+      }
+      $PreStartInfo = @(Get-ScheduledTaskInfo -TaskName $TaskName | Where-Object -FilterScript { $Null -ne $PSItem })
+      If ($PreStartInfo.Count -ne 1 -or
+        $PreStartInfo[0].PSObject.Properties.Name -notcontains 'LastRunTime' -or
+        $Null -eq $PreStartInfo[0].LastRunTime) {
+        Throw 'Scheduled task pre-start runtime-info readback must return one object with LastRunTime.'
+      }
+      $PreStartLastRunTime = [System.DateTime]$PreStartInfo[0].LastRunTime
       $Null = Start-ScheduledTask -TaskName $TaskName
       $Deadline = [System.DateTime]::UtcNow.AddSeconds($DeadlineSeconds)
+      $PendingResults = [System.UInt32[]]@(267009, 267011, 267045)
       Do {
-        $TaskInfo = Get-ScheduledTaskInfo -TaskName $TaskName
-        $TaskResult = [System.UInt32]$TaskInfo.LastTaskResult
-        If ($TaskResult -ne 267009) { Break }
+        $TaskInfo = @(Get-ScheduledTaskInfo -TaskName $TaskName | Where-Object -FilterScript { $Null -ne $PSItem })
+        If ($TaskInfo.Count -ne 1 -or
+          $TaskInfo[0].PSObject.Properties.Name -notcontains 'LastRunTime' -or
+          $TaskInfo[0].PSObject.Properties.Name -notcontains 'LastTaskResult' -or
+          $Null -eq $TaskInfo[0].LastRunTime -or $Null -eq $TaskInfo[0].LastTaskResult) {
+          Throw 'Scheduled task runtime-info poll must return one object with LastRunTime and LastTaskResult.'
+        }
+        $TaskResult = [System.UInt32]$TaskInfo[0].LastTaskResult
+        $LastRunTime = [System.DateTime]$TaskInfo[0].LastRunTime
+        If ($LastRunTime -gt $PreStartLastRunTime -and $TaskResult -notin $PendingResults) { Break }
         If ([System.DateTime]::UtcNow -ge $Deadline) {
           $Tail = & $ReadTranscriptTail -Path $TranscriptPath
           Throw ('Batch cluster mutation timed out after {0} seconds. Transcript tail:{1}{2}' -f $DeadlineSeconds, [System.Environment]::NewLine, $Tail)
@@ -352,9 +374,87 @@ Exit $ExitCode
         $Tail = & $ReadTranscriptTail -Path $TranscriptPath
         Throw ('Batch cluster mutation failed with scheduled task result {0}. Transcript tail:{1}{2}' -f $TaskResult, [System.Environment]::NewLine, $Tail)
       }
-    } Finally {
-      If ($TaskRegistered) { $Null = Unregister-ScheduledTask -TaskName $TaskName -Confirm:$False }
-      Remove-Item -LiteralPath $TranscriptPath -Force -ErrorAction SilentlyContinue
+    } Catch {
+      $PrimaryError = $PSItem
+    }
+
+    $CleanupFailures = [System.Collections.Generic.List[System.String]]::new()
+    $CanUnregisterTask = $False
+    If ($TaskRegistrationAttempted) {
+      $CleanupTask = @()
+      $CleanupTaskReadbackValid = $False
+      Try {
+        $CleanupTask = @(Get-ScheduledTask -TaskName $TaskName | Where-Object -FilterScript { $Null -ne $PSItem })
+        If ($CleanupTask.Count -ne 1) {
+          Throw ('Scheduled task cleanup readback must return exactly one task; found {0}.' -f $CleanupTask.Count)
+        }
+        If ($CleanupTask[0].PSObject.Properties.Name -notcontains 'State' -or $Null -eq $CleanupTask[0].State) {
+          Throw 'Scheduled task cleanup readback must return one task with State.'
+        }
+        $CleanupTaskReadbackValid = $True
+      } Catch {
+        $CleanupFailures.Add(('task-readback {0}: {1}' -f $TaskName, $PSItem.Exception.Message))
+      }
+      If ($CleanupTaskReadbackValid -and [System.String]$CleanupTask[0].State -eq 'Running') {
+        $TaskStopped = $False
+        Try {
+          $Null = Stop-ScheduledTask -TaskName $TaskName
+          $TaskStopped = $True
+        } Catch {
+          $CleanupFailures.Add(('stop-if-running {0}: {1}' -f $TaskName, $PSItem.Exception.Message))
+        }
+        If ($TaskStopped) {
+          $PostStopTask = @()
+          $PostStopReadbackValid = $False
+          Try {
+            $PostStopTask = @(Get-ScheduledTask -TaskName $TaskName | Where-Object -FilterScript { $Null -ne $PSItem })
+            If ($PostStopTask.Count -ne 1) {
+              Throw ('Scheduled task post-stop readback must return exactly one task; found {0}.' -f $PostStopTask.Count)
+            }
+            If ($PostStopTask[0].PSObject.Properties.Name -notcontains 'State' -or $Null -eq $PostStopTask[0].State) {
+              Throw 'Scheduled task post-stop readback must return one task with State.'
+            }
+            $PostStopReadbackValid = $True
+          } Catch {
+            $CleanupFailures.Add(('post-stop-readback {0}: {1}' -f $TaskName, $PSItem.Exception.Message))
+          }
+          If ($PostStopReadbackValid) {
+            If ([System.String]$PostStopTask[0].State -eq 'Running') {
+              $CleanupFailures.Add(('post-stop-state {0}: scheduled task is still Running.' -f $TaskName))
+            } Else {
+              $CanUnregisterTask = $True
+            }
+          }
+        }
+      } ElseIf ($CleanupTaskReadbackValid) {
+        $CanUnregisterTask = $True
+      }
+      If ($CanUnregisterTask) {
+        Try {
+          $Null = Unregister-ScheduledTask -TaskName $TaskName -Confirm:$False
+        } Catch {
+          $CleanupFailures.Add(('unregister {0}: {1}' -f $TaskName, $PSItem.Exception.Message))
+        }
+      }
+    }
+    Try {
+      If (Test-Path -LiteralPath $TranscriptPath) {
+        Remove-Item -LiteralPath $TranscriptPath -Force -ErrorAction Stop
+      }
+      If (Test-Path -LiteralPath $TranscriptPath) {
+        Throw ('Transcript {0} still exists after removal.' -f $TranscriptPath)
+      }
+    } Catch {
+      $CleanupFailures.Add(('transcript {0}: {1}' -f $TranscriptPath, $PSItem.Exception.Message))
+    }
+    If ($Null -ne $PrimaryError) {
+      $CleanupText = If ($CleanupFailures.Count -gt 0) {
+        '{0}Cleanup failures: {1}' -f [System.Environment]::NewLine, ($CleanupFailures -join '; ')
+      } Else { '' }
+      Throw ('{0}{1}' -f $PrimaryError.Exception.Message, $CleanupText)
+    }
+    If ($CleanupFailures.Count -gt 0) {
+      Throw ('Batch cluster mutation cleanup failed: {0}' -f ($CleanupFailures -join '; '))
     }
   }
 
