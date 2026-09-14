@@ -44,3 +44,10 @@ create computer objects:
 
 The cluster takes over objects that already exist. It cannot create others, and it holds nothing
 at the OU level.
+
+## State
+
+- `present` (default) — converge the role's declared state.
+- `absent` — not implemented; the framework loader fails before role work because no
+  `absent_windows.yml` exists.
+- `clean` — supported no-op; neither role leaves a persistent cache to remove.

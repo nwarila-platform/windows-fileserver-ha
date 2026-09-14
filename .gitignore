@@ -109,6 +109,12 @@
 !/docs/explanation/technical-debt.md
 !/docs/reference/ansible-style-guide.md
 !/docs/reference/aws-iam/README.md
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_ebs.json
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_ec2.json
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_eni.json
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_iam.json
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_s3.json
+!/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_reaper_sg.json
 !/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_runner_ebs.json
 !/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_runner_ec2.json
 !/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_runner_eni.json
@@ -118,6 +124,7 @@
 !/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_runner_sg.json
 !/docs/reference/aws-iam/policies/nwarila-platform_windows-fileserver-ha_runner_ssm.json
 !/docs/reference/aws-iam/roles/github_nwarila-platform_windows-fileserver-ha-admin.trust.json
+!/docs/reference/aws-iam/roles/github_nwarila-platform_windows-fileserver-ha-reaper.trust.json
 !/docs/reference/aws-iam/roles/github_nwarila-platform_windows-fileserver-ha.trust.json
 !/docs/reference/aws-iam/roles/nwarila-ec2-role.trust.json
 !/docs/reference/powershell-style-guide.md

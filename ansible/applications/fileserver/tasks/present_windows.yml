@@ -8,8 +8,9 @@
 # $Ansible, so this task file stays declarative and the play recap stays honest
 # (docs/reference/powershell-style-guide.md).
 #
-# This Administrator phase converges the SMB baseline and node-local cluster prerequisites.
-# Cluster-scoped convergence follows in the fleet playbook under the cluster service account.
+# The node scope converges the Administrator-owned SMB baseline and cluster prerequisites. The
+# cluster scope later performs the whole cluster convergence under the cluster service account.
+# The playbook's five inline tasks are outside the cluster play; that play only invokes this scope.
 #
 # =========================================================================================== #
 ---
