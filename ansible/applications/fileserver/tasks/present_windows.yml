@@ -258,7 +258,7 @@
 #region ------ [ Cluster ] ------------------------------------------------------------------- #
 # The cluster scope runs on the former only, after the node baseline has converged on every
 # member. Its BEGIN phase resolves the attached volume identities for later disk adoption; its
-# PROCESS phase forms the cluster from the declared name, nodes, and static addresses.
+# PROCESS phases form the cluster and then converge the cluster name's network parameters.
 - name: 'MAIN | Resolve The Runtime Identity Of The Shared Disks'
   when:
     - fileserver_running.execution_scope == 'cluster'
@@ -408,5 +408,28 @@
             )
             | join('\n')
           }}
+
+- name: 'MAIN | Converge The Cluster Name Parameters'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Converge The Cluster Name Parameters ] -------------------------- #
+
+    - name: 'PROCESS | Converge The Cluster Name Parameters'
+      register: '__fileserver_cluster_name_parameters__'
+      ansible.windows.win_powershell:
+        depth: 3
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          ResourceName: "{{ fileserver_running.cluster.name_resource }}"
+          RegisterAllProvidersIP: >-
+            {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
+          HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterNameParameters.ps1') }}
+
+    #endregion --- [ Process: Converge The Cluster Name Parameters ] -------------------------- #
 
 #endregion --- [ Cluster ] ------------------------------------------------------------------- #

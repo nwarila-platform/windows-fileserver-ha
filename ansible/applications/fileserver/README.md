@@ -8,10 +8,10 @@ application role this repository carries.
 The role's Administrator phase converges the SMB server baseline, Failover Clustering and File
 Services prerequisites, AWS NVMe reservation support, and cluster-service-account membership in
 local Administrators. The fleet playbook then connects to the inventory-proven singleton former
-as the cluster service account. The role’s cluster scope forms `TCNAW-FSCL01`; the cluster play
-then converges its name parameters, adopts both declared disks by EBS identity, creates the AZ-a
-role `TCNAW-HAFS01`, publishes its encrypted CA `data` share, and ends. A final controller-only
-play forgets the in-memory cluster credential.
+as the cluster service account. The role’s cluster scope forms `TCNAW-FSCL01` and converges its name
+parameters; the cluster play then adopts both declared disks by EBS identity, creates the AZ-a role
+`TCNAW-HAFS01`, publishes its encrypted CA `data` share, and ends. A final controller-only play
+forgets the in-memory cluster credential.
 
 ## How this role does complex work
 
