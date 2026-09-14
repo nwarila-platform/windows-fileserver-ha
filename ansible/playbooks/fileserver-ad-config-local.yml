@@ -58,6 +58,7 @@
           no_log: true
 
           ansible.builtin.set_fact:
+            cacheable: false
             __fileserver_ad_password__: "{{ lookup('secret', __password_url__) }}"
 
       # The lookup's own errors name the URL and never the value, but they are raised inside a
