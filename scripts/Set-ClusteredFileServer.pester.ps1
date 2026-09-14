@@ -573,22 +573,6 @@ Describe 'Set-ClusteredFileServer' {
     $BoundNames | Should -Not -Contain $Legacy
   }
 
-  It 'D1-P643 binds the END dependency readback through InputObject' {
-    $script:PlaybookText | Should -Match '\$DependencyResult\s*=\s*@\(Get-ClusterResourceDependency\s+-InputObject\s+\$RoleNameResources\[0\]\)'
-  }
-
-  It 'D1-P661 binds the END preferred-owner readback through InputObject' {
-    $script:PlaybookText | Should -Match 'Get-ClusterOwnerNode\s+-InputObject\s+\$Role'
-  }
-
-  It 'D1b-P661 extracts OwnerNodes from the preferred-owner wrapper' {
-    $script:PlaybookText | Should -Match '\(Get-ClusterOwnerNode\s+-InputObject\s+\$Role\)\.OwnerNodes'
-  }
-
-  It 'D1b-P736 extracts OwnerNodes from the disk-owner wrapper' {
-    $script:PlaybookText | Should -Match '\(Get-ClusterOwnerNode\s+-InputObject\s+\$Match\.resource\)\.OwnerNodes'
-  }
-
   It 'preserves the full parameter and result contract' {
     $Command = Get-Command -Name $script:ScriptPath
     $ExpectedParameters = @(

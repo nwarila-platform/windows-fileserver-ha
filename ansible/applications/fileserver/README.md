@@ -8,10 +8,10 @@ application role this repository carries.
 The role's Administrator phase converges the SMB server baseline, Failover Clustering and File
 Services prerequisites, AWS NVMe reservation support, and cluster-service-account membership in
 local Administrators. The fleet playbook then connects to the inventory-proven singleton former
-as that service account. The role's cluster scope forms `TCNAW-FSCL01`; the playbook then converges
-its name parameters, adopts both declared disks by EBS identity, creates the AZ-a role
-`TCNAW-HAFS01`, and publishes its encrypted CA `data` share. The playbook finishes with an ungated
-readback of cluster, disks, role, IPs, dependency, quorum, share, ACLs, and SMB-by-name access.
+as the cluster service account. The role’s cluster scope forms `TCNAW-FSCL01`; the cluster play
+then converges its name parameters, adopts both declared disks by EBS identity, creates the AZ-a
+role `TCNAW-HAFS01`, publishes its encrypted CA `data` share, and ends. A final controller-only
+play forgets the in-memory cluster credential.
 
 ## How this role does complex work
 
@@ -22,6 +22,8 @@ spec, under `scripts/`:
 
 | Stub in this role | Source pair | Converges |
 |---|---|---|
+| `files/Get-ClusteredFileServerOwner.ps1.stub` | `scripts/Get-ClusteredFileServerOwner.ps1` + `.pester.ps1` | Exact Online clustered file-server role owner for node-local delegation |
+| `files/Set-DomainControllerReverseZone.ps1.stub` | `scripts/Set-DomainControllerReverseZone.ps1` + `.pester.ps1` | Exact domain-controller reverse-zone NRPT rule with failure-honest readback |
 | `files/Set-SmbServerHardening.ps1.stub` | `scripts/Set-SmbServerHardening.ps1` + `.pester.ps1` | SMB server configuration against the declared baseline (`fileserver.smb.settings`) |
 | `files/Set-FileServerCluster.ps1.stub` | `scripts/Set-FileServerCluster.ps1` + `.pester.ps1` | Exact four-node cluster and core static addresses |
 | `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Cluster Name DNS registration parameters |

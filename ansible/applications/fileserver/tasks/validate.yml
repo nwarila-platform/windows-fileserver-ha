@@ -13,6 +13,7 @@
 # =========================================================================================== #
 ---
 - name: 'VALIDATE | Require A Supported Execution Scope'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.execution_scope in ['node', 'cluster']
@@ -21,6 +22,7 @@
     quiet: true
 
 - name: 'VALIDATE | Require A Non-Empty SMB Baseline Of Well-Formed Property Names'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.smb.settings is mapping
@@ -36,6 +38,7 @@
     quiet: true
 
 - name: 'VALIDATE | Require Well-Formed Cluster And File Server Names'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.service_account is string
@@ -53,6 +56,7 @@
     quiet: true
 
 - name: 'VALIDATE | Require The Ratified Shared Disk Ownership Topology'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.nodes is sequence
@@ -88,6 +92,7 @@
     quiet: true
 
 - name: 'VALIDATE | Require Disjoint IPv4 Address Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __fileserver_ipv4_pattern__: '^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$'
     __fileserver_all_addresses__: >-
@@ -111,6 +116,11 @@
     quiet: true
 
 - name: 'VALIDATE | Require Runtime-Only Shared Disk Identity'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.shared_disks }}"
+  loop_control:
+    label: "{{ disk.function | default('malformed shared disk') }}"
+    loop_var: 'disk'
   ansible.builtin.assert:
     that:
       - disk is mapping
@@ -123,12 +133,8 @@
       function, owners, and fileserver_home; runtime volume IDs and observed disk or resource
       identity do not belong in defaults.
     quiet: true
-  loop: "{{ fileserver_running.cluster.shared_disks }}"
-  loop_control:
-    label: "{{ disk.function | default('malformed shared disk') }}"
-    loop_var: 'disk'
-
 - name: 'VALIDATE | Require The Ratified Cluster Name Parameters'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.name_parameters.register_all_providers_ip is integer
@@ -141,6 +147,7 @@
     quiet: true
 
 - name: 'VALIDATE | Require The Ratified Clustered Share Properties'
+  when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:
     that:
       - fileserver_running.cluster.share.name == 'data'
@@ -161,6 +168,11 @@
     quiet: true
 
 - name: 'VALIDATE | Require Well-Formed Clustered NTFS Access Entries'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.share.ntfs_access }}"
+  loop_control:
+    label: "{{ ntfs_entry.principal | default('malformed NTFS access entry') }}"
+    loop_var: 'ntfs_entry'
   ansible.builtin.assert:
     that:
       - ntfs_entry is mapping
@@ -177,12 +189,12 @@
       principal, access_control_type, rights, inheritance_flags, and propagation_flags, with a
       non-empty principal and the ratified Allow, inheritance, and propagation settings.
     quiet: true
-  loop: "{{ fileserver_running.cluster.share.ntfs_access }}"
-  loop_control:
-    label: "{{ ntfs_entry.principal | default('malformed NTFS access entry') }}"
-    loop_var: 'ntfs_entry'
-
 - name: 'VALIDATE | Require Well-Formed Clustered Share Access Entries'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.share.share_access }}"
+  loop_control:
+    label: "{{ share_entry.principal | default('malformed share access entry') }}"
+    loop_var: 'share_entry'
   ansible.builtin.assert:
     that:
       - share_entry is mapping
@@ -197,12 +209,8 @@
       principal, access_control_type, and access_right, with a non-empty principal and the
       ratified Allow setting.
     quiet: true
-  loop: "{{ fileserver_running.cluster.share.share_access }}"
-  loop_control:
-    label: "{{ share_entry.principal | default('malformed share access entry') }}"
-    loop_var: 'share_entry'
-
 - name: 'VALIDATE | Require The Exact Clustered Share Access Policy'
+  when: (state | default('present') | string | lower | trim) == 'present'
   vars:
     __fileserver_required_ntfs_access__:
       - principal: 'NT AUTHORITY\SYSTEM'

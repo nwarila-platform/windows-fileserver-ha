@@ -14,12 +14,13 @@
 ---
 fileserver_defaults:
 
-  #region ------ [ Execution scope ] ----------------------------------------------------------- #
+  #region ------ [ Execution scope ] --------------------------------------------------------- #
 
   # Preserve the full node baseline unless a caller explicitly crosses the cluster-only boundary.
   execution_scope: 'node'
 
-  #endregion --- [ Execution scope ] ----------------------------------------------------------- #
+  #endregion --- [ Execution scope ] --------------------------------------------------------- #
+
   #region ------ [ SMB server baseline ] ----------------------------------------------------- #
 
   smb:
@@ -41,6 +42,7 @@ fileserver_defaults:
       AuditSmb1Access: true
 
   #endregion --- [ SMB server baseline ] ----------------------------------------------------- #
+
   #region ------ [ Cluster ] ----------------------------------------------------------------- #
 
   # The Windows resource labels and share policy travel with the product. A caller replacing an
