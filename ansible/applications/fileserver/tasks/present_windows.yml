@@ -432,4 +432,175 @@
 
     #endregion --- [ Process: Converge The Cluster Name Parameters ] -------------------------- #
 
+- name: 'MAIN | Adopt The Declared Shared Disks And Constrain Their Owners'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Adopt The Declared Shared Disks And Constrain Their Owners ] ---- #
+
+    - name: 'PROCESS | Adopt The Declared Shared Disks And Constrain Their Owners'
+      delegate_to: "{{ disk.preparer }}"
+      loop: "{{ __fileserver_resolved_shared_disks__ | default([]) }}"
+      loop_control:
+        label: "{{ disk.function }}"
+        loop_var: 'disk'
+      register: '__fileserver_cluster_disks__'
+      ansible.windows.win_powershell:
+        depth: 5
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          Disk:
+            Function: "{{ disk.function }}"
+            VolumeId: "{{ disk.volume_id }}"
+            Owners: "{{ disk.owners }}"
+            FileServerHome: "{{ disk.fileserver_home }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterSharedDisks.ps1') }}
+
+    #endregion --- [ Process: Adopt The Declared Shared Disks And Constrain Their Owners ] ---- #
+
+- name: 'MAIN | Converge The Clustered File Server Role'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Converge The Clustered File Server Role ] ----------------------- #
+
+    - name: 'PROCESS | Run The Clustered File Server Role Convergence'
+      # The connection password is reused only for the delegation-capable batch logon.
+      no_log: true
+      async: 1320
+      poll: 15
+      register: '__fileserver_clustered_role__'
+      vars:
+        home_disk: >-
+          {{ __fileserver_resolved_shared_disks__
+             | selectattr('fileserver_home', 'equalto', true) | list | first }}
+      ansible.windows.win_powershell:
+        depth: 5
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+          TimeoutSeconds: 1200
+          HomeVolumeId: "{{ home_disk.volume_id }}"
+          Owners: "{{ home_disk.owners }}"
+          Password: "{{ ansible_password }}"
+          StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
+          IgnoredNetworkAddress: >-
+            {{ fileserver_running.cluster.file_server.ignored_network_addresses }}
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredFileServer.ps1') }}
+
+    #endregion --- [ Process: Converge The Clustered File Server Role ] ----------------------- #
+
+  rescue:
+    - name: 'PROCESS | Report That The Clustered File Server Role Could Not Be Converged'
+
+      ansible.builtin.fail:
+        msg: >-
+          {{
+            (
+              (__fileserver_clustered_role__.error | default([]) | map(attribute='output') | list)
+              + [
+                (
+                  __fileserver_clustered_role__.msg
+                  | default('Clustered file server role convergence failed.')
+                )
+              ]
+            )
+            | join('\n')
+          }}
+
+- name: 'MAIN | Read The Clustered File Server Owner'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Begin: Read The Clustered File Server Owner ] ---------------------------- #
+
+    - name: 'BEGIN | Read The Clustered File Server Owner'
+      check_mode: false
+      register: '__fileserver_role_owner__'
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          RoleName: "{{ fileserver_running.cluster.file_server.name }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Get-ClusteredFileServerOwner.ps1') }}
+
+    #endregion --- [ Begin: Read The Clustered File Server Owner ] ---------------------------- #
+
+- name: 'MAIN | Converge The Clustered Data Directory And Share'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  vars:
+    __fileserver_role_owner_host__: >-
+      {{ __fileserver_role_owner__.output[0].owner_node | default(inventory_hostname) | lower }}
+  block:
+
+    #region ------ [ Process: Converge The Clustered Data Directory And Share ] --------------- #
+
+    - name: 'PROCESS | Create The Clustered Data Directory'
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      ansible.windows.win_file:
+        access_time: 'preserve'
+        access_time_format: 'yyyy-MM-dd HH:mm:ss'
+        modification_time: 'preserve'
+        modification_time_format: 'yyyy-MM-dd HH:mm:ss'
+        path: "{{ fileserver_running.cluster.share.path }}"
+        state: 'directory'
+
+    - name: 'PROCESS | Enforce The Clustered Data Directory Permissions'
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      register: '__fileserver_share_directory_acl__'
+      ansible.windows.win_powershell:
+        depth: 6
+        error_action: 'stop'
+        parameters:
+          Mode: 'DirectoryAcl'
+          ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+          Name: "{{ fileserver_running.cluster.share.name }}"
+          Path: "{{ fileserver_running.cluster.share.path }}"
+          Description: "{{ fileserver_running.cluster.share.description }}"
+          ContinuouslyAvailable: >-
+            {{ fileserver_running.cluster.share.continuously_available }}
+          FolderEnumerationMode: >-
+            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
+          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
+          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
+          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
+          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
+
+    - name: 'PROCESS | Publish The Clustered Data Share'
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      register: '__fileserver_clustered_share__'
+      ansible.windows.win_powershell:
+        depth: 6
+        error_action: 'stop'
+        parameters:
+          Mode: 'Share'
+          ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+          Name: "{{ fileserver_running.cluster.share.name }}"
+          Path: "{{ fileserver_running.cluster.share.path }}"
+          Description: "{{ fileserver_running.cluster.share.description }}"
+          ContinuouslyAvailable: >-
+            {{ fileserver_running.cluster.share.continuously_available }}
+          FolderEnumerationMode: >-
+            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
+          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
+          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
+          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
+          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
+
+    #endregion --- [ Process: Converge The Clustered Data Directory And Share ] --------------- #
+
 #endregion --- [ Cluster ] ------------------------------------------------------------------- #

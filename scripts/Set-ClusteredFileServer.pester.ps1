@@ -6,7 +6,7 @@ Param (
   [Parameter(Mandatory = $False)]
   [System.String] $SourcePath = (Join-Path -Path $PSScriptRoot -ChildPath 'Set-ClusteredFileServer.ps1'),
   [Parameter(Mandatory = $False)]
-  [System.String] $PlaybookPath = (Join-Path -Path $PSScriptRoot -ChildPath '../ansible/playbooks/fileserver-aws.yml')
+  [System.String] $PlaybookPath = (Join-Path -Path $PSScriptRoot -ChildPath '../ansible/applications/fileserver/tasks/present_windows.yml')
 )
 
 class FsHaVendorNameTransformationAttribute : System.Management.Automation.ArgumentTransformationAttribute {
@@ -31,7 +31,7 @@ BeforeAll {
     Copy-Item -LiteralPath $script:SelectedSourcePath -Destination $script:ScriptPath
   }
   If ($PlaybookPath -eq ':git-index:') {
-    $script:PlaybookText = (& git show ':ansible/playbooks/fileserver-aws.yml') -join [System.Environment]::NewLine
+    $script:PlaybookText = (& git show ':ansible/applications/fileserver/tasks/present_windows.yml') -join [System.Environment]::NewLine
     If ($LASTEXITCODE -ne 0) { Throw 'Could not read the indexed playbook baseline.' }
   } Else {
     $script:PlaybookPath = (Resolve-Path -LiteralPath $PlaybookPath).Path
