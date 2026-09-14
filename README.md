@@ -59,6 +59,8 @@ pinned in `.github/workflows/powershell.yml`. From the repository root, run the 
 POWERSHELL_TEMPLATE_ROOT=<powershell-template> ./scripts/verify.sh
 ```
 
+The contributor-local verifier covers those three gates only. Repository CI additionally materializes and composes both roles into the pinned framework, rejects collisions with framework-tracked roles, runs `ansible-lint` on both role paths, syntax-checks every repository playbook through the composed tree, and runs `bash -n` on the three shell entry points.
+
 The deployment files have their own static gates:
 
 ```sh
