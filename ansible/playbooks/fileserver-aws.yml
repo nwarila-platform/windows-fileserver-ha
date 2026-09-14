@@ -302,20 +302,6 @@
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
   tasks:
 
-    - name: 'MAIN | Converge The Cluster Name Parameters'
-      register: '__fileserver_cluster_name_parameters__'
-      ansible.windows.win_powershell:
-        depth: 3
-        error_action: 'stop'
-        parameters:
-          ClusterName: "{{ fileserver_running.cluster.name }}"
-          ResourceName: "{{ fileserver_running.cluster.name_resource }}"
-          RegisterAllProvidersIP: >-
-            {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
-          HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
-        script: >-
-          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-ClusterNameParameters.ps1') }}
-
     - name: 'MAIN | Adopt The Declared Shared Disks And Constrain Their Owners'
       delegate_to: "{{ disk.preparer }}"
       loop: "{{ __fileserver_resolved_shared_disks__ }}"
