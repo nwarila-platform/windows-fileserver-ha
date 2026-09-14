@@ -80,7 +80,7 @@
       ^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$
     __fileserver_ad_config_record_addresses__: >-
       {{ record.value
-         if (record.value is sequence and record.value is not string)
+         if (record.value is sequence and record.value is not string and record.value is not mapping)
          else [record.value] }}
   ansible.builtin.assert:
     that:
@@ -91,7 +91,7 @@
       - record.key | string is match(__fileserver_ad_config_dns_label_pattern__)
       - >-
         record.value is string
-        or (record.value is sequence and record.value is not string)
+        or (record.value is sequence and record.value is not string and record.value is not mapping)
       - __fileserver_ad_config_record_addresses__ | length > 0
       - __fileserver_ad_config_record_addresses__ | reject('string') | list | length == 0
       - >-
@@ -114,12 +114,18 @@
     __fileserver_ad_config_addresses__: >-
       {{ fileserver_ad_config_running.nodes | dict2items
          | map(attribute='value') | flatten | list }}
+    __fileserver_ad_config_labels__: >-
+      {{ fileserver_ad_config_running.nodes | dict2items
+         | map(attribute='key') | map('lower') | list }}
   ansible.builtin.assert:
     that:
+      - >-
+        __fileserver_ad_config_labels__ | unique | list | length
+        == __fileserver_ad_config_labels__ | length
       - >-
         __fileserver_ad_config_addresses__ | unique | list | length
         == __fileserver_ad_config_addresses__ | length
     fail_msg: >-
-      Refusing to run: every fileserver_ad_config.nodes IPv4 address must be unique across the
-      static DNS declarations.
+      Refusing to run: node DNS labels must be unique case-insensitively, and every IPv4 address
+      must be unique across the static DNS declarations.
     quiet: true
