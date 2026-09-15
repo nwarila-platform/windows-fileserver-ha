@@ -15,6 +15,15 @@ BeforeAll {
 
   $global:SetFileServerClusterGetCurrentIdentityName = { 'TCN\svc-fscluster-mgr' }
   $global:SetFileServerClusterReadTranscriptTail = { 'terminating mutation proof' }
+  $global:SetFileServerClusterFindPrestageComputerObject = {
+    Param ([System.String]$Name)
+    $global:FsHaDirectoryCalls += $Name
+    $global:FsHaFormationOperations += ('DirectoryRead:{0}' -f $Name)
+    If ($global:FsHaDirectoryLookupFailure -eq $Name) {
+      Throw 'injected directory lookup failure'
+    }
+    New-StubDirectoryEntry -Name $Name
+  }
   $script:GetLocalMembershipStatus = { $global:FsHaLocalMembershipStatus }
 
   Function Set-LocalMembershipStatus {
@@ -54,6 +63,31 @@ BeforeAll {
       Return
     }
     Throw ('Result leaf {0} has forbidden type {1}.' -f $Path, $Value.GetType().FullName)
+  }
+
+  Function New-StubDirectoryEntry {
+    Param ([System.String]$Name)
+    $Property = [PSCustomObject]@{ Value = [System.Int32]$global:FsHaDirectoryUserAccountControl[$Name] }
+    $Entry = [PSCustomObject]@{
+      Name = $Name
+      Properties = @{ userAccountControl = $Property }
+    }
+    $Entry | Add-Member -MemberType ScriptMethod -Name 'RefreshCache' -Value {
+      Param ([System.String[]]$PropertyName)
+      $global:FsHaDirectoryReadbacks += $this.Name
+      $this.Properties['userAccountControl'].Value = [System.Int32]$global:FsHaDirectoryUserAccountControl[$this.Name]
+    }
+    $Entry | Add-Member -MemberType ScriptMethod -Name 'CommitChanges' -Value {
+      $global:FsHaDirectoryCommits += $this.Name
+      $global:FsHaFormationOperations += ('DirectoryWrite:{0}' -f $this.Name)
+      If ($global:FsHaDirectoryCommitFailure -eq $this.Name) {
+        Throw 'injected directory commit failure'
+      }
+      If ($global:FsHaDirectoryReadbackMismatch -ne $this.Name) {
+        $global:FsHaDirectoryUserAccountControl[$this.Name] = [System.Int32]$this.Properties['userAccountControl'].Value
+      }
+    }
+    $Entry
   }
 
   Function Get-Cluster {
@@ -305,7 +339,7 @@ BeforeAll {
 
 AfterAll {
   $env:TEMP = $script:OriginalTemp
-  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTranscriptPath', 'FsHaTranscriptSeedOnStart', 'FsHaTranscriptRemoveFails', 'FsHaTranscriptRemoveLeavesFile', 'FsHaTranscriptRemoveAttempts', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskReads', 'FsHaTaskResult', 'FsHaTaskUnregistrations', 'FsHaTaskExists', 'FsHaTaskState', 'FsHaTaskRegistrationVisible', 'FsHaTaskLastRunTime', 'FsHaTaskCompleted', 'FsHaTaskInfoReads', 'FsHaTaskInfoSequence', 'FsHaTaskStops', 'FsHaTaskStopFails', 'FsHaTaskStopLeavesRunning', 'FsHaTaskUnregisterFails', 'FsHaSkipSleep', 'FsHaFormationProbeCalls', 'FsHaFormationProbeFailures', 'FsHaFormationServiceStates', 'FsHaFormationOperations' -Scope Global -ErrorAction SilentlyContinue
+  Remove-Variable -Name 'SetFileServerClusterGetCurrentIdentityName', 'SetFileServerClusterReadTranscriptTail', 'SetFileServerClusterFindPrestageComputerObject', 'SetFileServerClusterGetClusterCoreState', 'SetFileServerClusterGetLocalMembershipStatus', 'FsHaObjectBearingError', 'FsHaLocalMembershipStatus', 'FsHaClusterCoreStateReads', 'FsHaClusterPresent', 'FsHaClusterName', 'FsHaClusterObject', 'FsHaClusterReads', 'FsHaClusterNodes', 'FsHaClusterAddresses', 'FsHaClusterPhysicalDisks', 'FsHaClusterAutoAddDisk', 'FsHaDownNode', 'FsHaClusterWrites', 'FsHaClusterFrozen', 'FsHaMutationWritesError', 'FsHaEligibleDiskReads', 'FsHaInnerCommand', 'FsHaScheduledMutation', 'FsHaTranscriptPath', 'FsHaTranscriptSeedOnStart', 'FsHaTranscriptRemoveFails', 'FsHaTranscriptRemoveLeavesFile', 'FsHaTranscriptRemoveAttempts', 'FsHaTaskRegistrations', 'FsHaTaskStarts', 'FsHaTaskReads', 'FsHaTaskResult', 'FsHaTaskUnregistrations', 'FsHaTaskExists', 'FsHaTaskState', 'FsHaTaskRegistrationVisible', 'FsHaTaskLastRunTime', 'FsHaTaskCompleted', 'FsHaTaskInfoReads', 'FsHaTaskInfoSequence', 'FsHaTaskStops', 'FsHaTaskStopFails', 'FsHaTaskStopLeavesRunning', 'FsHaTaskUnregisterFails', 'FsHaSkipSleep', 'FsHaFormationProbeCalls', 'FsHaFormationProbeFailures', 'FsHaFormationServiceStates', 'FsHaFormationOperations', 'FsHaDirectoryCalls', 'FsHaDirectoryReadbacks', 'FsHaDirectoryCommits', 'FsHaDirectoryUserAccountControl', 'FsHaDirectoryLookupFailure', 'FsHaDirectoryCommitFailure', 'FsHaDirectoryReadbackMismatch' -Scope Global -ErrorAction SilentlyContinue
 }
 
 Describe 'Set-FileServerCluster' {
@@ -358,6 +392,15 @@ Describe 'Set-FileServerCluster' {
       $global:FsHaFormationServiceStates[$ClusterNodeName] = @('Stopped')
     }
     $global:FsHaFormationOperations = @()
+    $global:FsHaDirectoryCalls = @()
+    $global:FsHaDirectoryReadbacks = @()
+    $global:FsHaDirectoryCommits = @()
+    $global:FsHaDirectoryUserAccountControl = @{
+      'TCNAW-FSCL01' = [System.Int32]4098
+    }
+    $global:FsHaDirectoryLookupFailure = ''
+    $global:FsHaDirectoryCommitFailure = ''
+    $global:FsHaDirectoryReadbackMismatch = ''
   }
   AfterEach {
     Remove-AnsibleContext
@@ -480,6 +523,71 @@ Describe 'Set-FileServerCluster' {
     $InnerResult.exit_code | Should -Be 1
     $InnerResult.transcript | Should -Match 'simulated non-terminating New-Cluster DNS registration error'
     $InnerResult.transcript | Should -Not -Match 'New-Cluster -Name \$Mutation\.cluster_name'
+  }
+
+  It 'disables an enabled prestaged CNO before New-Cluster and reports the change' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaDirectoryUserAccountControl['TCNAW-FSCL01'] = [System.Int32]4096
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | ConvertFrom-Json
+
+    $Result.changed | Should -BeTrue
+    $Result.actions | Should -Contain 'disable_prestaged_computer:TCNAW-FSCL01'
+    $Result.actions | Should -Contain 'create_cluster'
+    ([System.Int32]$global:FsHaDirectoryUserAccountControl['TCNAW-FSCL01'] -band 2) | Should -Be 2
+    $global:FsHaDirectoryCommits | Should -Be @('TCNAW-FSCL01')
+    [System.Array]::IndexOf($global:FsHaFormationOperations, 'DirectoryWrite:TCNAW-FSCL01') |
+      Should -BeLessThan ([System.Array]::IndexOf($global:FsHaFormationOperations, 'New'))
+  }
+
+  It 'performs zero directory calls when Get-Cluster returns the existing cluster' {
+    Set-LocalMembershipStatus -Status 'member-running' -ServiceStatus 'Running' -ClusDbPresent $True -StartType 'Automatic'
+
+    $Result = & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | ConvertFrom-Json
+
+    $Result.changed | Should -BeFalse
+    $global:FsHaClusterReads | Should -HaveCount 1
+    $global:FsHaDirectoryCalls | Should -HaveCount 0
+    $global:FsHaDirectoryCommits | Should -HaveCount 0
+  }
+
+  It 'names the prestaged object when its disable fails' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaDirectoryUserAccountControl['TCNAW-FSCL01'] = [System.Int32]4096
+    $global:FsHaDirectoryCommitFailure = 'TCNAW-FSCL01'
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
+      Should -Throw '*Prestage computer object TCNAW-FSCL01 disable failed:*injected directory commit failure*'
+    $global:FsHaTaskRegistrations | Should -HaveCount 0
+  }
+
+  It 'fails when userAccountControl readback lacks the disable bit' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaDirectoryUserAccountControl['TCNAW-FSCL01'] = [System.Int32]4096
+    $global:FsHaDirectoryReadbackMismatch = 'TCNAW-FSCL01'
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+
+    { & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password } |
+      Should -Throw '*Prestage computer object TCNAW-FSCL01 disable failed:*userAccountControl readback 4096 does not contain the ACCOUNTDISABLE bit*'
+    $global:FsHaDirectoryReadbacks | Should -Be @('TCNAW-FSCL01', 'TCNAW-FSCL01')
+    $global:FsHaTaskRegistrations | Should -HaveCount 0
+  }
+
+  It 'predicts enabled-CNO disablement in check mode without directory or cluster writes' {
+    $global:FsHaClusterPresent = $False
+    $global:FsHaDirectoryUserAccountControl['TCNAW-FSCL01'] = [System.Int32]4096
+    Set-LocalMembershipStatus -Status 'fresh' -ServiceStatus 'Stopped' -ClusDbPresent $False -StartType 'Manual'
+    $Context = New-AnsibleContext -CheckMode
+
+    & $script:ScriptPath -ClusterName 'TCNAW-FSCL01' -Node $script:Nodes -StaticAddress $script:Addresses -Password $script:Password | Out-Null
+
+    $Context.Changed | Should -BeTrue
+    $Context.Result.actions | Should -Be @('disable_prestaged_computer:TCNAW-FSCL01', 'create_cluster')
+    $global:FsHaDirectoryCommits | Should -HaveCount 0
+    $global:FsHaClusterWrites | Should -HaveCount 0
+    $global:FsHaTaskRegistrations | Should -HaveCount 0
   }
 
   It 'probes every prospective node over WMI for stopped ClusSvc before formation' {
