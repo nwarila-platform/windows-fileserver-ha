@@ -5,11 +5,11 @@
 # spec. The role's tasks/validate.yml enforces its merged-config guards.
 # The playbook selects the role's node or cluster execution scope; tasks/validate.yml enforces it.
 #
-# Defaults describe only the ratified SMB and clustered-share product policy. The playbook supplies
-# the caller-declared topology, disk ownership, file-server, network, path, and site-principal
-# identity. The role resolves runtime volume identities; sensitive connection data stays
-# caller-owned. The witness SMB share and quorum, Storage Replica, and a second file-server role
-# are explicitly outside the implemented surface; tasks/validate.yml owns enforcement.
+# Defaults describe only the ratified SMB, clustered-share, and witness-share product policy. The
+# playbook supplies the caller-declared topology, disk ownership, file-server, witness, network,
+# path, and site-principal identity. The role resolves runtime volume identities; sensitive
+# connection data stays caller-owned. Storage Replica and a second file-server role are outside
+# the implemented surface; tasks/validate.yml owns enforcement.
 # =========================================================================================== #
 ---
 galaxy_info:
@@ -17,10 +17,11 @@ galaxy_info:
   namespace: 'nwarila_platform'
   author: 'nwarila-platform'
   description: >-
-    Windows Server 2025 file service: SMB and node prerequisites, a four-node WSFC cluster,
-    two adopted owner-scoped shared disks, one AZ-a clustered file-server role, and its exact
-    encrypted continuously available data share. The witness SMB share and quorum, Storage
-    Replica, and an AZ-b file-server role are excluded.
+    Windows Server 2025 file service: SMB and node prerequisites, a caller-declared WSFC cluster,
+    two adopted owner-scoped shared disks, one caller-declared clustered file-server role, and its
+    exact encrypted continuously available data share. A dedicated caller-declared domain member
+    publishes the file-share witness for Node and File Share Majority quorum. Storage Replica and
+    a second file-server role are excluded.
   license: 'MIT'
   min_ansible_version: '2.17'
   platforms:

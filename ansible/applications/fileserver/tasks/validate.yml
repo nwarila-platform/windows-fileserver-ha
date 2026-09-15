@@ -146,6 +146,48 @@
       integer 0 and host_record_ttl must be integer 300.
     quiet: true
 
+- name: 'VALIDATE | Require The File Share Witness Contract'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_witness_ipv4_pattern__: '^(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})$'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.witness.host is string
+      - >-
+        fileserver_running.cluster.witness.host
+        is match('^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?$')
+      - >-
+        (fileserver_running.cluster.witness.host | lower)
+        not in (fileserver_running.cluster.nodes | map('lower') | list)
+      - fileserver_running.cluster.witness.cluster_principal is string
+      - >-
+        fileserver_running.cluster.witness.cluster_principal
+        is match('^[^\\\\]+\\\\[^\\\\]+\\$$')
+      - >-
+        (fileserver_running.cluster.witness.cluster_principal | lower).split('\\')[-1]
+        == (fileserver_running.cluster.name | lower) ~ '$'
+      - fileserver_running.cluster.witness.node_addresses is sequence
+      - fileserver_running.cluster.witness.node_addresses is not string
+      - fileserver_running.cluster.witness.node_addresses | length == 4
+      - fileserver_running.cluster.witness.node_addresses | unique | length == 4
+      - >-
+        fileserver_running.cluster.witness.node_addresses
+        | reject('match', __fileserver_witness_ipv4_pattern__) | list | length == 0
+      - fileserver_running.cluster.witness.share.name == 'witness$'
+      - fileserver_running.cluster.witness.share.path is match('^[A-Z]:\\\\[^\\\\].*$')
+      - fileserver_running.cluster.witness.share.description is string
+      - fileserver_running.cluster.witness.share.description | length > 0
+      - fileserver_running.cluster.witness.share.caching_mode == 'None'
+      - fileserver_running.cluster.witness.share.encrypt_data is boolean
+      - >-
+        fileserver_running.cluster.witness.share.encrypt_data
+        == fileserver_running.smb.settings.EncryptData
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.witness must declare a non-node host, the cluster
+      name object's down-level principal, four unique node IPv4 addresses, and the ratified
+      hidden, drive-rooted, encrypted, no-cache witness share.
+    quiet: true
+
 - name: 'VALIDATE | Require The Ratified Clustered Share Properties'
   when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:

@@ -52,6 +52,12 @@ fileserver_defaults:
     name_parameters:
       register_all_providers_ip: 0
       host_record_ttl: 300
+    witness:
+      share:
+        name: 'witness$'
+        description: 'Failover cluster file share witness'
+        caching_mode: 'None'
+        encrypt_data: true
     share:
       name: 'data'
       description: 'Highly available file data'

@@ -31,6 +31,8 @@ spec, under `scripts/`:
 | `files/Set-ClusterSharedDisks.ps1.stub` | `scripts/Set-ClusterSharedDisks.ps1` + `.pester.ps1` | EBS-identity disk adoption, possible owners, and Online state |
 | `files/Set-ClusteredFileServer.ps1.stub` | `scripts/Set-ClusteredFileServer.ps1` + `.pester.ps1` | Caller-declared file-server role converged by the role's cluster scope: home disk, preferred owners, static IPs, and OR dependency |
 | `files/Set-ClusteredSmbShare.ps1.stub` | `scripts/Set-ClusteredSmbShare.ps1` + `.pester.ps1` | Protected directory DACL and exact scoped clustered SMB share |
+| `files/Set-ClusterFileShareWitness.ps1.stub` | `scripts/Set-ClusterFileShareWitness.ps1` + `.pester.ps1` | Dedicated directory, exact protected CNO DACL, and exact standalone witness share |
+| `files/Set-ClusterFileShareWitnessQuorum.ps1.stub` | `scripts/Set-ClusterFileShareWitnessQuorum.ps1` + `.pester.ps1` | Exact Online file-share witness resource and Node and File Share Majority quorum |
 
 `scripts/materialize-role-scripts.sh` resolves each stub into `files/<Name>.ps1` before the
 role is linted or run; the materialized copy is a build artifact and is never committed.
@@ -53,6 +55,10 @@ For `state=present`, the playbook supplies the environment-specific leaves omitt
 | `cluster.file_server.name` | Clustered file-server role identity. |
 | `cluster.file_server.static_addresses` | Two distinct role addresses. |
 | `cluster.file_server.ignored_network_addresses` | Two distinct ignored network addresses. |
+| `cluster.witness.host` | Dedicated non-cluster domain member that hosts the witness share. |
+| `cluster.witness.cluster_principal` | Down-level CNO principal granted exact witness rights. |
+| `cluster.witness.node_addresses` | Four node addresses admitted through the witness host firewall. |
+| `cluster.witness.share.path` | Drive-rooted local witness directory path. |
 | `cluster.share.path` | Drive-rooted clustered-share path. |
 | `cluster.share.ntfs_access` | Complete three-entry protected DACL, including the site principal. |
 | `cluster.share.share_access` | Complete two-entry share ACL, including the same site principal. |
@@ -65,13 +71,14 @@ rejects a malformed merged map before any role mutation.
 
 Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry product
 opinion only: the node execution-scope default, SMB hardening, fixed Windows resource and share
-labels, Cluster Name resource parameters, share properties, and built-in principal grants. The
+labels, Cluster Name resource parameters, data- and witness-share properties, and built-in principal
+grants. The
 playbook supplies every deployment-specific value through its anchored `fileserver` map: the
-service account; cluster and file-server identities; node and disk ownership; addresses; share path;
-and site principal. Caller-supplied access lists replace the defaults whole. Validation treats the
-merged maps as exact policy. Runtime volume identifiers and the cluster credential never enter
-defaults; the playbook resolves the credential once, and the role's cluster scope resolves the
-Function-tagged declared volumes immediately before cluster mutation.
+service account; cluster, file-server, and witness identities; node and disk ownership; addresses;
+share paths; and site principals. Caller-supplied access lists replace the defaults whole.
+Validation treats the merged maps as exact policy. Runtime volume identifiers and the cluster
+credential never enter defaults; the playbook resolves the credential once, and the role's cluster
+scope resolves the Function-tagged declared volumes immediately before cluster mutation.
 The baseline role call takes the node execution-scope default; the cluster play passes cluster,
 and tasks read only fileserver_running.execution_scope.
 
@@ -79,8 +86,8 @@ The directory DACL is protected and contains exactly SYSTEM and local Administra
 `FullControl` plus Domain Users `Modify`; the share ACL contains exactly local Administrators
 `Full` plus Domain Users `Change`. Owner, group, and SACL are preserved.
 
-Not implemented: the witness SMB share and quorum, an AZ-b file-server role, and Storage Replica.
-Quorum remains `NodeMajority`; the adopted AZ-b disk is owner-scoped but hosts no role.
+Not implemented: a second file-server role and Storage Replica. The second adopted disk is
+owner-scoped but hosts no role.
 
 ## State
 
