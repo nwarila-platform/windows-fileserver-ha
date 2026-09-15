@@ -66,8 +66,8 @@
         object receives Full Control of it.
 
     .EXAMPLE
-        PS> ./Set-ClusterDirectoryRights.ps1 -AccountName 'svc-fscluster-mgr' `
-              -ClusterName 'TCNAW-FSCL01' -FileServerName 'TCNAW-HAFS01'
+        PS> ./Set-ClusterDirectoryRights.ps1 -AccountName '<service-account>' `
+              -ClusterName '<cluster-name>' -FileServerName '<file-server-name>'
 
     .OUTPUTS
         System.String
