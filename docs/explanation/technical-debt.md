@@ -12,18 +12,6 @@ but it does not run the deploy workflow's Terraform-format, workflow-lint, or IA
 and `actionlint`; the IAM reference documents remain reviewable in their tracked form.
 **Exit:** `scripts/verify.sh` gains the deploy-workflow checks and IAM checks.
 
-## TD-002 — Witness quorum is deferred
-
-**Gap:** The implemented cluster remains `NodeMajority`. The domain-joined witness interface still
-declares `security_groups = []` and `ingress = []`, so the four cluster nodes have no inbound SMB
-path to it.
-**Containment:** The final proof requires `NodeMajority` and reports file-share witness/quorum as
-NOT DONE. The witness receives domain membership, but no SMB share,
-inbound access, or quorum mutation occurs.
-**Exit:** An authorized plan permits TCP/445 only from the four cluster nodes, creates an exclusive
-SMB2+ witness share with exact filesystem/share rights, configures quorum with domain credentials
-and Kerberos, and passes fresh quorum validation before changing the quorum model.
-
 ## TD-003 — Cross-AZ data service is deferred
 
 **Gap:** Both per-AZ disks are adopted into the cluster and constrained to their declared owner
