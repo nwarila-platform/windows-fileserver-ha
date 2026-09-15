@@ -1858,10 +1858,47 @@ all_systems = [
         description    = "tcnaw-witnes01c CI firewall"
         interface_type = null
         # The witness is not a cluster member and hosts no clustered role, so it needs neither a
-        # static primary nor a cluster address.
+        # static primary nor a cluster address. SMB ingress names only the four cluster-node ENIs.
         private_ip      = null
         security_groups = []
-        ingress         = []
+        ingress = [
+          {
+            description                  = "File share witness SMB from tcnaw-hafs01a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.1.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "File share witness SMB from tcnaw-hafs02a"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.33.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "File share witness SMB from tcnaw-hafs01b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.65.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "File share witness SMB from tcnaw-hafs02b"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.97.10/32"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
         egress = [
           {
             description                  = "HTTPS out"
