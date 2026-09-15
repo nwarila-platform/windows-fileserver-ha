@@ -76,6 +76,8 @@
 !/ansible/applications/fileserver/README.md
 !/ansible/applications/fileserver/defaults/main.yml
 !/ansible/applications/fileserver/files/Get-ClusteredFileServerOwner.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusterFileShareWitness.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusterFileShareWitnessQuorum.ps1.stub
 !/ansible/applications/fileserver/files/Set-FileServerCluster.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusterNameParameters.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusterSharedDisks.ps1.stub
@@ -134,6 +136,10 @@
 # lines together) beside Python/bash tooling.
 !/scripts/Set-ClusterDirectoryRights.pester.ps1
 !/scripts/Set-ClusterDirectoryRights.ps1
+!/scripts/Set-ClusterFileShareWitness.pester.ps1
+!/scripts/Set-ClusterFileShareWitness.ps1
+!/scripts/Set-ClusterFileShareWitnessQuorum.pester.ps1
+!/scripts/Set-ClusterFileShareWitnessQuorum.ps1
 !/scripts/Set-FileServerCluster.ps1
 !/scripts/Set-FileServerCluster.pester.ps1
 !/scripts/Get-ClusteredFileServerOwner.ps1
