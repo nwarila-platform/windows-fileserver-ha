@@ -204,6 +204,94 @@ Try {
     $GetCurrentIdentityName = { [System.Security.Principal.WindowsIdentity]::GetCurrent().Name }
   }
 
+  $FindPrestageComputerObject = Get-Variable -Name:'SetFileServerClusterFindPrestageComputerObject' -ValueOnly -ErrorAction:'SilentlyContinue'
+  If ($Null -eq $FindPrestageComputerObject) {
+    $FindPrestageComputerObject = {
+      Param (
+        [System.String]$Name,
+        [System.String]$IdentityName,
+        [System.String]$Password,
+        [System.DirectoryServices.AuthenticationTypes]$AuthenticationType
+      )
+      $RootDse = $Null
+      $SearchRoot = $Null
+      $Searcher = $Null
+      $SearchResults = $Null
+      Try {
+        $RootDse = [System.DirectoryServices.DirectoryEntry]::new('LDAP://RootDSE', $IdentityName, $Password, $AuthenticationType)
+        $DefaultNamingContext = [System.String]$RootDse.Properties['defaultNamingContext'][0]
+        If ([System.String]::IsNullOrWhiteSpace($DefaultNamingContext)) {
+          Throw 'RootDSE returned no defaultNamingContext.'
+        }
+        $SearchRoot = [System.DirectoryServices.DirectoryEntry]::new(('LDAP://{0}' -f $DefaultNamingContext), $IdentityName, $Password, $AuthenticationType)
+        $Searcher = [System.DirectoryServices.DirectorySearcher]::new($SearchRoot)
+        $EscapedName = $Name.Replace('\', '\5c').Replace('*', '\2a').Replace('(', '\28').Replace(')', '\29').Replace([System.String][System.Char]0, '\00')
+        $Searcher.Filter = '(&(objectCategory=computer)(sAMAccountName={0}$))' -f $EscapedName
+        $Searcher.PageSize = 2
+        $Null = $Searcher.PropertiesToLoad.Add('userAccountControl')
+        $SearchResults = $Searcher.FindAll()
+        If ($SearchResults.Count -ne 1) {
+          Throw ('directory lookup returned {0} matching computer objects.' -f $SearchResults.Count)
+        }
+        [System.DirectoryServices.DirectoryEntry]::new([System.String]$SearchResults[0].Path, $IdentityName, $Password, $AuthenticationType)
+      } Finally {
+        If ($Null -ne $SearchResults) { $SearchResults.Dispose() }
+        If ($Null -ne $Searcher) { $Searcher.Dispose() }
+        If ($Null -ne $SearchRoot) { $SearchRoot.Dispose() }
+        If ($Null -ne $RootDse) { $RootDse.Dispose() }
+      }
+    }
+  }
+
+  $SetPrestageComputerDisabled = {
+    Param ([System.String]$Name, [System.Boolean]$CheckMode)
+    $Computer = $Null
+    Try {
+      $IdentityName = & $GetCurrentIdentityName
+      $AuthenticationType = [System.DirectoryServices.AuthenticationTypes]::Secure -bor
+      [System.DirectoryServices.AuthenticationTypes]::Sealing -bor
+      [System.DirectoryServices.AuthenticationTypes]::Signing
+      $Computer = & $FindPrestageComputerObject -Name $Name -IdentityName $IdentityName -Password $Password -AuthenticationType $AuthenticationType
+      If ($Null -eq $Computer) { Throw 'directory lookup returned no computer object.' }
+      $Computer.RefreshCache([System.String[]]@('userAccountControl'))
+      $BeforeValue = $Computer.Properties['userAccountControl'].Value
+      If ($Null -eq $BeforeValue) { Throw 'initial userAccountControl read returned no value.' }
+      $BeforeUserAccountControl = [System.Int32]$BeforeValue
+      If (($BeforeUserAccountControl -band 2) -ne 0) {
+        Return [PSCustomObject]@{
+          changed              = $False
+          name                 = [System.String]$Name
+          user_account_control = $BeforeUserAccountControl
+        }
+      }
+      If ($CheckMode) {
+        Return [PSCustomObject]@{
+          changed              = $True
+          name                 = [System.String]$Name
+          user_account_control = $BeforeUserAccountControl
+        }
+      }
+      $Computer.Properties['userAccountControl'].Value = $BeforeUserAccountControl -bor 2
+      $Computer.CommitChanges()
+      $Computer.RefreshCache([System.String[]]@('userAccountControl'))
+      $AfterValue = $Computer.Properties['userAccountControl'].Value
+      If ($Null -eq $AfterValue) { Throw 'userAccountControl readback returned no value.' }
+      $AfterUserAccountControl = [System.Int32]$AfterValue
+      If (($AfterUserAccountControl -band 2) -eq 0) {
+        Throw ('userAccountControl readback {0} does not contain the ACCOUNTDISABLE bit.' -f $AfterUserAccountControl)
+      }
+      [PSCustomObject]@{
+        changed              = $True
+        name                 = [System.String]$Name
+        user_account_control = $AfterUserAccountControl
+      }
+    } Catch {
+      Throw ('Prestage computer object {0} disable failed: {1}' -f $Name, $PSItem.Exception.Message)
+    } Finally {
+      If ($Computer -is [System.IDisposable]) { $Computer.Dispose() }
+    }
+  }
+
   $ReadTranscriptTail = Get-Variable -Name:'SetFileServerClusterReadTranscriptTail' -ValueOnly -ErrorAction:'SilentlyContinue'
   If ($Null -eq $ReadTranscriptTail) {
     $ReadTranscriptTail = {
@@ -491,6 +579,10 @@ Exit $ExitCode
   }
   $Actions = [System.Collections.Generic.List[System.String]]::new()
   If ($LocalMembership.status -ceq 'fresh') {
+    $PrestageState = & $SetPrestageComputerDisabled -Name $ClusterName -CheckMode $Ansible.CheckMode
+    If ($PrestageState.changed) {
+      $Actions.Add(('disable_prestaged_computer:{0}' -f $ClusterName))
+    }
     $Actions.Add('create_cluster')
   } Else {
     $CurrentNodes = @($Before.nodes | ForEach-Object -Process { $PSItem.name.ToLowerInvariant() })
