@@ -33,6 +33,44 @@
       Setting: "{{ fileserver_running.smb.settings }}"
     error_action: 'stop'
 
+# The share is administered through the cluster service account during the cluster scope. Its
+# separate connection to the witness therefore needs the same local administrative boundary as
+# the four cluster nodes. The host firewall admits only kernel-mode SMB from their four declared
+# addresses on the Domain profile; the cloud rule independently enforces the same four /32s.
+- name: 'MAIN | Prepare The File Share Witness Host'
+  when:
+    - fileserver_running.execution_scope == 'node'
+    - >-
+      (inventory_hostname | lower)
+      == (fileserver_running.cluster.witness.host | lower)
+  block:
+
+    # region ----- [ Process: Prepare The File Share Witness Host ] --------------------------- #
+
+    - name: 'PROCESS | Ensure The Cluster Service Account Administers The Witness'
+      ansible.windows.win_group_membership:
+        members:
+          - "{{ fileserver_running.cluster.service_account }}"
+        name: 'Administrators'
+        state: 'present'
+
+    - name: 'PROCESS | Admit Cluster Nodes To The Witness SMB Service'
+      community.windows.win_firewall_rule:
+        action: 'allow'
+        description: 'Inbound SMB for the failover cluster file share witness [TCP 445]'
+        direction: 'in'
+        enabled: true
+        group: 'Failover Cluster File Share Witness'
+        localport: '445'
+        name: 'Failover Cluster File Share Witness (SMB-In)'
+        profiles: ['domain']
+        program: 'System'
+        protocol: 'tcp'
+        remoteip: "{{ fileserver_running.cluster.witness.node_addresses | join(',') }}"
+        state: 'present'
+
+    # endregion -- [ Process: Prepare The File Share Witness Host ] --------------------------- #
+
 # The role serves all five domain members, but only the four nodes join the cluster. Keep cluster
 # prerequisites node-scoped while the witness continues through the shared SMB baseline.
 - name: 'MAIN | Prepare The Cluster Nodes For Validation'
@@ -603,5 +641,42 @@
           {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
 
     #endregion --- [ Process: Converge The Clustered Data Directory And Share ] --------------- #
+
+- name: 'MAIN | Converge The File Share Witness And Cluster Quorum'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  vars:
+    __fileserver_witness_host__: >-
+      {{ fileserver_running.cluster.witness.host | default(inventory_hostname) | lower }}
+  block:
+
+    # region ----- [ Process: Converge The File Share Witness And Cluster Quorum ] ------------ #
+
+    - name: 'PROCESS | Publish The File Share Witness With CNO Rights'
+      delegate_to: "{{ __fileserver_witness_host__ }}"
+      ansible.windows.win_powershell:
+        depth: 5
+        error_action: 'stop'
+        parameters:
+          CachingMode: "{{ fileserver_running.cluster.witness.share.caching_mode }}"
+          ClusterPrincipal: "{{ fileserver_running.cluster.witness.cluster_principal }}"
+          Description: "{{ fileserver_running.cluster.witness.share.description }}"
+          EncryptData: "{{ fileserver_running.cluster.witness.share.encrypt_data }}"
+          Name: "{{ fileserver_running.cluster.witness.share.name }}"
+          Path: "{{ fileserver_running.cluster.witness.share.path }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterFileShareWitness.ps1') }}
+
+    - name: 'PROCESS | Converge Node And File Share Majority Quorum On The Former'
+      ansible.windows.win_powershell:
+        depth: 4
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          WitnessPath: "\\\\{{ __fileserver_witness_host__ }}\\{{ fileserver_running.cluster.witness.share.name }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterFileShareWitnessQuorum.ps1') }}
+
+    # endregion -- [ Process: Converge The File Share Witness And Cluster Quorum ] ------------ #
 
 #endregion --- [ Cluster ] ------------------------------------------------------------------- #
