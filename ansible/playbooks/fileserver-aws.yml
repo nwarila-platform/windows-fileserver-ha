@@ -192,6 +192,8 @@
 - name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
   hosts: 'fileserver_nodes:fileserver_witness'
   any_errors_fatal: true
+  vars_files:
+    - 'vars/fileserver-shares.yml'
 
   #region ------ [ Roles ] -------------------------------------------------------------------- #
   roles:
@@ -222,31 +224,8 @@
               node_addresses: ['10.0.1.10', '10.0.33.10', '10.0.65.10', '10.0.97.10']
               share:
                 path: 'C:\ClusterWitness'
-            share:
-              path: 'D:\shares\data'
-              ntfs_access:
-                - principal: 'NT AUTHORITY\SYSTEM'
-                  access_control_type: 'Allow'
-                  rights: 'FullControl'
-                  inheritance_flags: 'ContainerInherit,ObjectInherit'
-                  propagation_flags: 'None'
-                - principal: 'BUILTIN\Administrators'
-                  access_control_type: 'Allow'
-                  rights: 'FullControl'
-                  inheritance_flags: 'ContainerInherit,ObjectInherit'
-                  propagation_flags: 'None'
-                - principal: 'TCN\Domain Users'
-                  access_control_type: 'Allow'
-                  rights: 'Modify'
-                  inheritance_flags: 'ContainerInherit,ObjectInherit'
-                  propagation_flags: 'None'
-              share_access:
-                - principal: 'BUILTIN\Administrators'
-                  access_control_type: 'Allow'
-                  access_right: 'Full'
-                - principal: 'TCN\Domain Users'
-                  access_control_type: 'Allow'
-                  access_right: 'Change'
+            access_groups: "{{ fileserver_shares.access_groups }}"
+            shares: "{{ fileserver_shares.shares }}"
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
 
@@ -287,6 +266,8 @@
   hosts: 'fileserver_cluster_former'
   gather_facts: false
   become: false
+  vars_files:
+    - 'vars/fileserver-shares.yml'
   vars:
     ansible_user: 'TCN\svc-fscluster-mgr'
     ansible_password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"

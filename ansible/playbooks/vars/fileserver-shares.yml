@@ -1,0 +1,38 @@
+# =========================================================================================== #
+# File: 'ansible/playbooks/vars/fileserver-shares.yml'
+# --- [ Description ] ----------------------------------------------------------------------- #
+#
+# One compact declaration shared by the fleet and manual directory playbooks. The roles add the
+# protected principals and fixed access-rule fields before any value crosses a module boundary.
+#
+# =========================================================================================== #
+---
+fileserver_shares:
+  access_groups:
+    path: 'OU=Windows HA FileServer,OU=Domain Servers,DC=tcn,DC=trinitytechnicalservices,DC=com'
+    unmanaged_principals: ['TCN\Domain Users']
+    groups:
+      # yamllint disable rule:commas
+      - { principal: 'TCN\DL-FS-Sites-RW',                description: 'Sites share read/write' }
+      - { principal: 'TCN\DL-FS-Sites-North-RW',          description: 'Sites North folder read/write' }
+      - { principal: 'TCN\DL-FS-Sites-North-Projects-RW', description: 'Sites North Projects folder read/write' }
+      # yamllint enable rule:commas
+  shares:
+    - name: 'data'
+      path: 'D:\shares\data'
+      description: 'Highly available file data'
+      access:
+        - { principal: 'TCN\Domain Users', rights: 'Modify', share: 'Change' }
+    - name: 'sites'
+      path: 'D:\shares\sites'
+      description: 'Highly available site file data'
+      access:
+        - { principal: 'TCN\DL-FS-Sites-RW', rights: 'Modify', share: 'Change' }
+      folders:
+        - path: 'North'
+          inherit: false
+          access:
+            - { principal: 'TCN\DL-FS-Sites-North-RW', rights: 'Modify' }
+        - path: 'North\Projects'
+          access:
+            - { principal: 'TCN\DL-FS-Sites-North-Projects-RW', rights: 'Modify' }

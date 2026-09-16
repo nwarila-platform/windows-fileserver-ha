@@ -10,9 +10,10 @@ Services prerequisites, AWS NVMe reservation support, and cluster-service-accoun
 local Administrators. The fleet playbook then connects to the inventory-proven singleton former
 as the cluster service account. The role’s cluster scope performs the whole cluster convergence: it
 forms the caller-declared cluster, converges its name parameters, adopts both declared disks by EBS
-identity, creates the caller-declared file-server name as the implemented AZ role, and publishes the
-caller-declared clustered share under the role's encryption policy. The cluster play only invokes
-that scope. A final controller-only play forgets the in-memory cluster credential.
+identity, creates the caller-declared file-server name as the implemented AZ role, and publishes every
+caller-declared clustered share and folder tree under the role's encryption and access policy. The
+cluster play only invokes that scope. A final controller-only play forgets the in-memory cluster
+credential.
 
 ## How this role does complex work
 
@@ -30,6 +31,7 @@ spec, under `scripts/`:
 | `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Cluster Name DNS registration parameters |
 | `files/Set-ClusterSharedDisks.ps1.stub` | `scripts/Set-ClusterSharedDisks.ps1` + `.pester.ps1` | EBS-identity disk adoption, possible owners, and Online state |
 | `files/Set-ClusteredFileServer.ps1.stub` | `scripts/Set-ClusteredFileServer.ps1` + `.pester.ps1` | Caller-declared file-server role converged by the role's cluster scope: home disk, preferred owners, static IPs, and OR dependency |
+| `files/Set-ClusteredFolderTree.ps1.stub` | `scripts/Set-ClusteredFolderTree.ps1` + `.pester.ps1` | Declared folders, inheritance boundaries, and exact explicit access entries without recursion |
 | `files/Set-ClusteredSmbShare.ps1.stub` | `scripts/Set-ClusteredSmbShare.ps1` + `.pester.ps1` | Protected directory DACL and exact scoped clustered SMB share |
 | `files/Set-ClusterFileShareWitness.ps1.stub` | `scripts/Set-ClusterFileShareWitness.ps1` + `.pester.ps1` | Dedicated directory, exact protected CNO DACL, and exact standalone witness share |
 | `files/Set-ClusterFileShareWitnessQuorum.ps1.stub` | `scripts/Set-ClusterFileShareWitnessQuorum.ps1` + `.pester.ps1` | Exact Online file-share witness resource and Node and File Share Majority quorum |
@@ -59,9 +61,10 @@ For `state=present`, the playbook supplies the environment-specific leaves omitt
 | `cluster.witness.cluster_principal` | Down-level CNO principal granted exact witness rights. |
 | `cluster.witness.node_addresses` | Four node addresses admitted through the witness host firewall. |
 | `cluster.witness.share.path` | Drive-rooted local witness directory path. |
-| `cluster.share.path` | Drive-rooted clustered-share path. |
-| `cluster.share.ntfs_access` | Complete three-entry protected DACL, including the site principal. |
-| `cluster.share.share_access` | Complete two-entry share ACL, including the same site principal. |
+| `cluster.shares[]` | Ordered share declarations; the preserved `data` share is first. |
+| `cluster.shares[].path` | Unique, non-nested, drive-rooted clustered-share path. |
+| `cluster.shares[].access` | Compact caller grants as `{ principal, rights, share }`; the role emits the complete protected NTFS and share ACLs. |
+| `cluster.shares[].folders[]` | Optional ordered relative folders with compact `{ principal, rights }` grants; `inherit` defaults to `true`. |
 
 The inventory contract supplies the four-node group, the invocation supplies the AWS region, and the
 cluster play supplies its ambient cluster-service-account connection context. `tasks/validate.yml`
@@ -70,21 +73,32 @@ rejects a malformed merged map before any role mutation.
 ## Configuration
 
 Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry product
-opinion only: the node execution-scope default, SMB hardening, fixed Windows resource and share
-labels, Cluster Name resource parameters, data- and witness-share properties, and built-in principal
-grants. The
-playbook supplies every deployment-specific value through its anchored `fileserver` map: the
+opinion only: the node execution-scope default, SMB hardening, fixed Windows resource labels,
+Cluster Name resource parameters, share property defaults, and protected principal grants. The
+playbook supplies every deployment-specific value through its anchored `fileserver` map and the
+shared `ansible/playbooks/vars/fileserver-shares.yml` declaration: the
 service account; cluster, file-server, and witness identities; node and disk ownership; addresses;
-share paths; and site principals. Caller-supplied access lists replace the defaults whole.
+share names, paths, descriptions, folder trees; and site principals. The shared file is compact:
+the role supplies SYSTEM and Administrators, `Allow`, inheritance and propagation flags, share
+property defaults, and the default `inherit: true` before a value crosses a module boundary.
+Callers are refused if they attempt to write any of those role-owned access fields or principals.
 Validation treats the merged maps as exact policy. Runtime volume identifiers and the cluster
 credential never enter defaults; the playbook resolves the credential once, and the role's cluster
 scope resolves the Function-tagged declared volumes immediately before cluster mutation.
 The baseline role call takes the node execution-scope default; the cluster play passes cluster,
 and tasks read only fileserver_running.execution_scope.
 
-The directory DACL is protected and contains exactly SYSTEM and local Administrators
-`FullControl` plus Domain Users `Modify`; the share ACL contains exactly local Administrators
-`Full` plus Domain Users `Change`. Owner, group, and SACL are preserved.
+The first `data` share preserves the historical exact root policy: SYSTEM and local Administrators
+`FullControl` plus one case-identical site principal with `Modify`, and local Administrators `Full`
+plus that site principal with `Change` on the share. Later roots retain the protected entries and
+may add unique supported Allow grants. Folder DACLs keep explicit SYSTEM and local Administrators
+`FullControl`, honor the declared inheritance boundary, and contain exactly the remaining declared
+entries. Owner, group, SACL, files, and undeclared folders are untouched.
+
+Managed principals follow `DOMAIN\DL-FS-Share[-Folder...]-RO|RW`. Share and folder segments match
+the declaration case-insensitively; `RO` grants `ReadAndExecute` (and SMB `Read` at a root), while
+`RW` grants `Modify` (and SMB `Change` at a root). Explicitly unmanaged non-group principals are
+exempt from this naming rule.
 
 Not implemented: a second file-server role and Storage Replica. The second adopted disk is
 owner-scoped but hosts no role.

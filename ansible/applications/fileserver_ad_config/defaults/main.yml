@@ -36,3 +36,16 @@ fileserver_ad_config_defaults:
   dns_zone: ''
   nodes: {}
   #endregion --- [ Defaults: Caller-Owned Directory Configuration ] --------------------------- #
+
+  #region ------ [ Defaults: Access Groups ] -------------------------------------------------- #
+
+  # One caller-owned data file names every file-side principal, managed group, share, and OU.
+  # Empty shapes keep environment identity out of the role. Unmanaged site principals are
+  # explicit exclusions, so validation can require complete coverage without managing them.
+  access_groups:
+    path: ''
+    declared_principals: []
+    unmanaged_principals: []
+    groups: []
+    shares: []
+  #endregion --- [ Defaults: Access Groups ] -------------------------------------------------- #

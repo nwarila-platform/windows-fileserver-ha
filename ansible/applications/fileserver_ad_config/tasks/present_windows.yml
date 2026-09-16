@@ -139,3 +139,25 @@
     zone: "{{ fileserver_ad_config_running.dns_zone }}"
 
 #endregion --- [ Process: Cluster Node Address Records ] ------------------------------------- #
+
+#region ------ [ Process: File Share Access Groups ] ----------------------------------------- #
+
+# Membership is deliberately absent: this role owns group existence, location, scope, category,
+# and description only. Removing a declaration makes the group unmanaged; no absent path exists.
+# The first-class convergence script independently reads and verifies every group after mutation.
+- name: 'PROCESS | Ensure The File Share Access Groups'
+  loop: "{{ fileserver_ad_config_running.access_groups.groups }}"
+  loop_control:
+    label: "{{ group.principal }}"
+    loop_var: 'group'
+  ansible.windows.win_powershell:
+    depth: 5
+    error_action: 'stop'
+    parameters:
+      Description: "{{ group.description }}"
+      Path: "{{ fileserver_ad_config_running.access_groups.path }}"
+      Principal: "{{ group.principal }}"
+    script: >-
+      {{ lookup('ansible.builtin.file', 'Set-FileShareAccessGroup.ps1') }}
+
+#endregion --- [ Process: File Share Access Groups ] ----------------------------------------- #

@@ -17,8 +17,8 @@ galaxy_info:
   author: 'nwarila-platform'
   description: >-
     Creates and maintains the directory service account a Windows failover cluster is formed
-    with, and the rights that account needs. Runs against a domain controller, never against a
-    cluster node.
+    with, the rights that account needs, and the domain-local groups used by declared file
+    shares. Runs against a domain controller, never against a cluster node.
   license: 'MIT'
   min_ansible_version: '2.19'
   platforms:

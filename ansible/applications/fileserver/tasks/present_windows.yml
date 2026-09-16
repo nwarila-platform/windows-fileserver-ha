@@ -574,28 +574,129 @@
 
     #endregion --- [ Begin: Read The Clustered File Server Owner ] ---------------------------- #
 
-- name: 'MAIN | Converge The Clustered Data Directory And Share'
+- name: 'MAIN | Converge The Declared Clustered Directories And Shares'
   when:
     - fileserver_running.execution_scope == 'cluster'
   vars:
     __fileserver_role_owner_host__: >-
       {{ __fileserver_role_owner__.output[0].owner_node | default(inventory_hostname) | lower }}
+    __fileserver_continuously_available__: >-
+      {{ share.continuously_available
+         | default(fileserver_running.cluster.share_defaults.continuously_available) }}
+    __fileserver_folder_enumeration_mode__: >-
+      {{ share.folder_enumeration_mode
+         | default(fileserver_running.cluster.share_defaults.folder_enumeration_mode) }}
+    __fileserver_caching_mode__: >-
+      {{ share.caching_mode | default(fileserver_running.cluster.share_defaults.caching_mode) }}
+    __fileserver_encrypt_data__: >-
+      {{ share.encrypt_data | default(fileserver_running.cluster.share_defaults.encrypt_data) }}
+    __fileserver_translated_ntfs_access__: >-
+      {%- set translated = namespace(entries=fileserver_running.cluster.protected_ntfs_access) -%}
+      {%- for entry in share.access -%}
+      {%- set translated.entries = translated.entries + [{
+        'principal': entry.principal,
+        'access_control_type': 'Allow',
+        'rights': entry.rights,
+        'inheritance_flags': 'ContainerInherit,ObjectInherit',
+        'propagation_flags': 'None'
+      }] -%}
+      {%- endfor -%}
+      {{ translated.entries }}
+    __fileserver_translated_share_access__: >-
+      {%- set translated = namespace(entries=fileserver_running.cluster.protected_share_access) -%}
+      {%- for entry in share.access -%}
+      {%- set translated.entries = translated.entries + [{
+        'principal': entry.principal,
+        'access_control_type': 'Allow',
+        'access_right': entry.share
+      }] -%}
+      {%- endfor -%}
+      {{ translated.entries }}
+    __fileserver_translated_folders__: >-
+      {%- set translated = namespace(folders=[]) -%}
+      {%- for folder in share.folders | default([]) -%}
+      {%- set folder_access = namespace(entries=fileserver_running.cluster.protected_folder_access) -%}
+      {%- for entry in folder.access -%}
+      {%- set folder_access.entries = folder_access.entries + [{
+        'principal': entry.principal,
+        'access_control_type': 'Allow',
+        'rights': entry.rights
+      }] -%}
+      {%- endfor -%}
+      {%- set translated.folders = translated.folders + [{
+        'path': folder.path,
+        'inherit': folder.inherit | default(true),
+        'access': folder_access.entries
+      }] -%}
+      {%- endfor -%}
+      {{ translated.folders }}
   block:
 
-    #region ------ [ Process: Converge The Clustered Data Directory And Share ] --------------- #
+    #region ------ [ Process: Converge The Declared Clustered Directories And Shares ] -------- #
 
-    - name: 'PROCESS | Create The Clustered Data Directory'
+    - name: 'PROCESS | Resolve The Declared Clustered Share Principals'
+      changed_when: false
+      check_mode: true
       delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
+      ansible.windows.win_powershell:
+        depth: 6
+        error_action: 'stop'
+        parameters:
+          Mode: 'DirectoryAcl'
+          ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
+          Name: "{{ share.name }}"
+          Path: "{{ share.path }}"
+          Description: "{{ share.description }}"
+          ContinuouslyAvailable: "{{ __fileserver_continuously_available__ }}"
+          FolderEnumerationMode: "{{ __fileserver_folder_enumeration_mode__ }}"
+          CachingMode: "{{ __fileserver_caching_mode__ }}"
+          EncryptData: "{{ __fileserver_encrypt_data__ }}"
+          NtfsAccess: "{{ __fileserver_translated_ntfs_access__ }}"
+          ShareAccess: "{{ __fileserver_translated_share_access__ }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
+
+    - name: 'PROCESS | Resolve The Declared Clustered Folder Principals'
+      changed_when: false
+      check_mode: true
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
+      ansible.windows.win_powershell:
+        depth: 8
+        error_action: 'stop'
+        parameters:
+          RootPath: "{{ share.path }}"
+          Folders: "{{ __fileserver_translated_folders__ }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredFolderTree.ps1') }}
+
+    - name: 'PROCESS | Create The Declared Clustered Share Directories'
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
       ansible.windows.win_file:
         access_time: 'preserve'
         access_time_format: 'yyyy-MM-dd HH:mm:ss'
         modification_time: 'preserve'
         modification_time_format: 'yyyy-MM-dd HH:mm:ss'
-        path: "{{ fileserver_running.cluster.share.path }}"
+        path: "{{ share.path }}"
         state: 'directory'
 
-    - name: 'PROCESS | Enforce The Clustered Data Directory Permissions'
+    - name: 'PROCESS | Enforce The Declared Clustered Share Root Permissions'
       delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
       register: '__fileserver_share_directory_acl__'
       ansible.windows.win_powershell:
         depth: 6
@@ -603,22 +704,39 @@
         parameters:
           Mode: 'DirectoryAcl'
           ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
-          Name: "{{ fileserver_running.cluster.share.name }}"
-          Path: "{{ fileserver_running.cluster.share.path }}"
-          Description: "{{ fileserver_running.cluster.share.description }}"
-          ContinuouslyAvailable: >-
-            {{ fileserver_running.cluster.share.continuously_available }}
-          FolderEnumerationMode: >-
-            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
-          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
-          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
-          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
-          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+          Name: "{{ share.name }}"
+          Path: "{{ share.path }}"
+          Description: "{{ share.description }}"
+          ContinuouslyAvailable: "{{ __fileserver_continuously_available__ }}"
+          FolderEnumerationMode: "{{ __fileserver_folder_enumeration_mode__ }}"
+          CachingMode: "{{ __fileserver_caching_mode__ }}"
+          EncryptData: "{{ __fileserver_encrypt_data__ }}"
+          NtfsAccess: "{{ __fileserver_translated_ntfs_access__ }}"
+          ShareAccess: "{{ __fileserver_translated_share_access__ }}"
         script: >-
           {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
 
-    - name: 'PROCESS | Publish The Clustered Data Share'
+    - name: 'PROCESS | Converge The Declared Clustered Folder Trees'
       delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
+      ansible.windows.win_powershell:
+        depth: 8
+        error_action: 'stop'
+        parameters:
+          RootPath: "{{ share.path }}"
+          Folders: "{{ __fileserver_translated_folders__ }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusteredFolderTree.ps1') }}
+
+    - name: 'PROCESS | Publish The Declared Clustered Shares'
+      delegate_to: "{{ __fileserver_role_owner_host__ }}"
+      loop: "{{ fileserver_running.cluster.shares }}"
+      loop_control:
+        label: "{{ share.name }}"
+        loop_var: 'share'
       register: '__fileserver_clustered_share__'
       ansible.windows.win_powershell:
         depth: 6
@@ -626,21 +744,19 @@
         parameters:
           Mode: 'Share'
           ScopeName: "{{ fileserver_running.cluster.file_server.name }}"
-          Name: "{{ fileserver_running.cluster.share.name }}"
-          Path: "{{ fileserver_running.cluster.share.path }}"
-          Description: "{{ fileserver_running.cluster.share.description }}"
-          ContinuouslyAvailable: >-
-            {{ fileserver_running.cluster.share.continuously_available }}
-          FolderEnumerationMode: >-
-            {{ fileserver_running.cluster.share.folder_enumeration_mode }}
-          CachingMode: "{{ fileserver_running.cluster.share.caching_mode }}"
-          EncryptData: "{{ fileserver_running.cluster.share.encrypt_data }}"
-          NtfsAccess: "{{ fileserver_running.cluster.share.ntfs_access }}"
-          ShareAccess: "{{ fileserver_running.cluster.share.share_access }}"
+          Name: "{{ share.name }}"
+          Path: "{{ share.path }}"
+          Description: "{{ share.description }}"
+          ContinuouslyAvailable: "{{ __fileserver_continuously_available__ }}"
+          FolderEnumerationMode: "{{ __fileserver_folder_enumeration_mode__ }}"
+          CachingMode: "{{ __fileserver_caching_mode__ }}"
+          EncryptData: "{{ __fileserver_encrypt_data__ }}"
+          NtfsAccess: "{{ __fileserver_translated_ntfs_access__ }}"
+          ShareAccess: "{{ __fileserver_translated_share_access__ }}"
         script: >-
           {{ lookup('ansible.builtin.file', 'Set-ClusteredSmbShare.ps1') }}
 
-    #endregion --- [ Process: Converge The Clustered Data Directory And Share ] --------------- #
+    #endregion --- [ Process: Converge The Declared Clustered Directories And Shares ] -------- #
 
 - name: 'MAIN | Converge The File Share Witness And Cluster Quorum'
   when:

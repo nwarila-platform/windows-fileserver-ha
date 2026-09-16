@@ -188,72 +188,14 @@
       hidden, drive-rooted, encrypted, no-cache witness share.
     quiet: true
 
-- name: 'VALIDATE | Require The Ratified Clustered Share Properties'
-  when: (state | default('present') | string | lower | trim) == 'present'
-  ansible.builtin.assert:
-    that:
-      - fileserver_running.cluster.share.name == 'data'
-      - fileserver_running.cluster.share.path is match('^[A-Z]:\\\\[^\\\\].*$')
-      - fileserver_running.cluster.share.description is string
-      - fileserver_running.cluster.share.description | length > 0
-      - fileserver_running.cluster.share.continuously_available is boolean
-      - fileserver_running.cluster.share.encrypt_data is boolean
-      - fileserver_running.cluster.share.folder_enumeration_mode == 'AccessBased'
-      - fileserver_running.cluster.share.caching_mode == 'None'
-      - >-
-        fileserver_running.cluster.share.encrypt_data
-        == fileserver_running.smb.settings.EncryptData
-    fail_msg: >-
-      Refusing to run: fileserver.cluster.share must declare the ratified data share with a
-      drive-rooted path below the root, non-empty description, CA/access-based/no-cache settings,
-      and encryption equal to fileserver.smb.settings.EncryptData.
-    quiet: true
-
-- name: 'VALIDATE | Require Well-Formed Clustered NTFS Access Entries'
-  when: (state | default('present') | string | lower | trim) == 'present'
-  loop: "{{ fileserver_running.cluster.share.ntfs_access }}"
-  loop_control:
-    label: "{{ ntfs_entry.principal | default('malformed NTFS access entry') }}"
-    loop_var: 'ntfs_entry'
-  ansible.builtin.assert:
-    that:
-      - ntfs_entry is mapping
-      - >-
-        ntfs_entry.keys() | list | sort
-        == ['access_control_type', 'inheritance_flags', 'principal', 'propagation_flags', 'rights']
-      - ntfs_entry.principal is string
-      - ntfs_entry.principal | length > 0
-      - ntfs_entry.access_control_type == 'Allow'
-      - ntfs_entry.inheritance_flags == 'ContainerInherit,ObjectInherit'
-      - ntfs_entry.propagation_flags == 'None'
-    fail_msg: >-
-      Refusing to run: each fileserver.cluster.share.ntfs_access entry must contain exactly
-      principal, access_control_type, rights, inheritance_flags, and propagation_flags, with a
-      non-empty principal and the ratified Allow, inheritance, and propagation settings.
-    quiet: true
-- name: 'VALIDATE | Require Well-Formed Clustered Share Access Entries'
-  when: (state | default('present') | string | lower | trim) == 'present'
-  loop: "{{ fileserver_running.cluster.share.share_access }}"
-  loop_control:
-    label: "{{ share_entry.principal | default('malformed share access entry') }}"
-    loop_var: 'share_entry'
-  ansible.builtin.assert:
-    that:
-      - share_entry is mapping
-      - >-
-        share_entry.keys() | list | sort
-        == ['access_control_type', 'access_right', 'principal']
-      - share_entry.principal is string
-      - share_entry.principal | length > 0
-      - share_entry.access_control_type == 'Allow'
-    fail_msg: >-
-      Refusing to run: each fileserver.cluster.share.share_access entry must contain exactly
-      principal, access_control_type, and access_right, with a non-empty principal and the
-      ratified Allow setting.
-    quiet: true
-- name: 'VALIDATE | Require The Exact Clustered Share Access Policy'
+- name: 'VALIDATE | Require The Protected Share And Folder Policy'
   when: (state | default('present') | string | lower | trim) == 'present'
   vars:
+    __fileserver_required_share_defaults__:
+      continuously_available: true
+      folder_enumeration_mode: 'AccessBased'
+      caching_mode: 'None'
+      encrypt_data: true
     __fileserver_required_ntfs_access__:
       - principal: 'NT AUTHORITY\SYSTEM'
         access_control_type: 'Allow'
@@ -265,41 +207,432 @@
         rights: 'FullControl'
         inheritance_flags: 'ContainerInherit,ObjectInherit'
         propagation_flags: 'None'
+    __fileserver_required_folder_access__:
+      - principal: 'NT AUTHORITY\SYSTEM'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
     __fileserver_required_share_access__:
       - principal: 'BUILTIN\Administrators'
         access_control_type: 'Allow'
         access_right: 'Full'
-    __fileserver_site_ntfs_access__: >-
-      {{ fileserver_running.cluster.share.ntfs_access
-         | difference(__fileserver_required_ntfs_access__) }}
-    __fileserver_site_share_access__: >-
-      {{ fileserver_running.cluster.share.share_access
-         | difference(__fileserver_required_share_access__) }}
   ansible.builtin.assert:
     that:
-      - fileserver_running.cluster.share.ntfs_access | length == 3
+      - fileserver_running.cluster.share_defaults == __fileserver_required_share_defaults__
+      - fileserver_running.cluster.protected_ntfs_access == __fileserver_required_ntfs_access__
       - >-
-        fileserver_running.cluster.share.ntfs_access
-        | map(attribute='principal') | unique | length == 3
-      - >-
-        __fileserver_required_ntfs_access__
-        | difference(fileserver_running.cluster.share.ntfs_access) | length == 0
-      - __fileserver_site_ntfs_access__ | length == 1
-      - __fileserver_site_ntfs_access__[0].rights == 'Modify'
-      - fileserver_running.cluster.share.share_access | length == 2
-      - >-
-        fileserver_running.cluster.share.share_access
-        | map(attribute='principal') | unique | length == 2
-      - >-
-        __fileserver_required_share_access__
-        | difference(fileserver_running.cluster.share.share_access) | length == 0
-      - __fileserver_site_share_access__ | length == 1
-      - __fileserver_site_share_access__[0].access_right == 'Change'
-      - >-
-        __fileserver_site_ntfs_access__[0].principal
-        == __fileserver_site_share_access__[0].principal
+        fileserver_running.cluster.protected_folder_access
+        == __fileserver_required_folder_access__
+      - fileserver_running.cluster.protected_share_access == __fileserver_required_share_access__
     fail_msg: >-
-      Refusing to run: fileserver.cluster.share.ntfs_access and share_access must preserve the
-      ratified protected-DACL and share policy exactly, with unique principals and one shared
-      non-empty site principal granted Modify and Change respectively.
+      Refusing to run: fileserver.cluster share defaults and protected access entries must retain
+      the ratified continuously available, access-based, no-cache, encrypted policy and exact
+      SYSTEM and Administrators grants.
+    quiet: true
+
+- name: 'VALIDATE | Require A Non-Empty Clustered Share List'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.shares is sequence
+      - fileserver_running.cluster.shares is not string
+      - fileserver_running.cluster.shares | length > 0
+      - fileserver_running.cluster.shares[0].name == 'data'
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.shares must be a non-empty list whose first declaration
+      is the data share.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Clustered Share Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.shares }}"
+  loop_control:
+    label: "{{ share.name | default('malformed share') }}"
+    loop_var: 'share'
+  vars:
+    __fileserver_share_keys__:
+      - 'access'
+      - 'caching_mode'
+      - 'continuously_available'
+      - 'description'
+      - 'encrypt_data'
+      - 'folder_enumeration_mode'
+      - 'folders'
+      - 'name'
+      - 'path'
+    __fileserver_required_share_keys__: >-
+      {{ ['access', 'description', 'name', 'path'] }}
+  ansible.builtin.assert:
+    that:
+      - share is mapping
+      - share.keys() | difference(__fileserver_share_keys__) | length == 0
+      - __fileserver_required_share_keys__ | difference(share.keys()) | length == 0
+      - share.name is string
+      - share.name is match('^[^\\\\/:*?"<>|]+$')
+      - share.path is string
+      - share.path is match('^[A-Z]:\\\\[^\\\\]+(?:\\\\[^\\\\]+)*$')
+      - share.description is string
+      - share.description | length > 0
+      - >-
+        (share.continuously_available
+         | default(fileserver_running.cluster.share_defaults.continuously_available)) is boolean
+      - >-
+        (share.folder_enumeration_mode
+         | default(fileserver_running.cluster.share_defaults.folder_enumeration_mode))
+        in ['AccessBased', 'Unrestricted']
+      - >-
+        (share.caching_mode | default(fileserver_running.cluster.share_defaults.caching_mode))
+        in ['None', 'Manual', 'Documents', 'Programs', 'BranchCache']
+      - >-
+        (share.encrypt_data | default(fileserver_running.cluster.share_defaults.encrypt_data))
+        is boolean
+      - share.access is sequence
+      - share.access is not string
+      - share.access is not mapping
+      - share.folders | default([]) is sequence
+      - share.folders | default([]) is not string
+      - share.folders | default([]) is not mapping
+    fail_msg: >-
+      Refusing to run: each fileserver.cluster.shares item must contain a safe non-empty name,
+      drive-rooted normalized path, description, a compact root access list, supported optional
+      share-property overrides, and only an optional folders list in addition to the required keys.
+    quiet: true
+
+- name: 'VALIDATE | Require Unique Non-Nested Clustered Shares'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.shares }}"
+  loop_control:
+    label: "{{ share.name }}"
+    loop_var: 'share'
+  vars:
+    __fileserver_share_names__: >-
+      {{ fileserver_running.cluster.shares | map(attribute='name') | map('lower') | list }}
+    __fileserver_share_paths__: >-
+      {{ fileserver_running.cluster.shares | map(attribute='path') | map('lower') | list }}
+    __fileserver_share_path__: "{{ share.path | lower }}"
+    __fileserver_nested_share_paths__: >-
+      {{ __fileserver_share_paths__ | reject('equalto', __fileserver_share_path__)
+         | select('match', '^' ~ (__fileserver_share_path__ | regex_escape) ~ '\\\\') | list }}
+  ansible.builtin.assert:
+    that:
+      - __fileserver_share_names__ | unique | length == __fileserver_share_names__ | length
+      - __fileserver_share_paths__ | unique | length == __fileserver_share_paths__ | length
+      - __fileserver_nested_share_paths__ | length == 0
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.shares names and paths must be unique without regard to
+      case, and no declared share path may contain another declared share path.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Compact Clustered Share Access Entries'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_running.cluster.shares | map(attribute='access') | flatten }}
+  loop_control:
+    label: "{{ access_entry.principal | default('malformed compact access entry') }}"
+    loop_var: 'access_entry'
+  vars:
+    __fileserver_protected_principals__: ['nt authority\system', 'builtin\administrators']
+  ansible.builtin.assert:
+    that:
+      - access_entry is mapping
+      - >-
+        access_entry.keys() | list | sort == ['principal', 'rights', 'share']
+      - access_entry.principal is string
+      - access_entry.principal | length > 0
+      - access_entry.principal | lower not in __fileserver_protected_principals__
+      - access_entry.rights in ['FullControl', 'Modify', 'ReadAndExecute']
+      - access_entry.share in ['Full', 'Change', 'Read']
+    fail_msg: >-
+      Refusing to run: every compact share access entry must contain exactly principal, rights,
+      and share, name a non-protected principal, and use supported NTFS and SMB rights. SYSTEM,
+      Administrators, access_control_type, inheritance_flags, and propagation_flags are role-owned.
+    quiet: true
+
+- name: 'VALIDATE | Require Safe Clustered Share Root Access'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.shares }}"
+  loop_control:
+    label: "{{ share.name }}"
+    loop_var: 'share'
+  vars:
+    __fileserver_access_principals__: >-
+      {{ share.access | map(attribute='principal') | map('lower') | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        __fileserver_access_principals__ | unique | length
+        == __fileserver_access_principals__ | length
+    fail_msg: >-
+      Refusing to run: every compact clustered share root must use unique caller principals.
+    quiet: true
+
+- name: 'VALIDATE | Require The Exact Clustered Data Share Access Policy'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    share: "{{ fileserver_running.cluster.shares[0] }}"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (share.continuously_available
+         | default(fileserver_running.cluster.share_defaults.continuously_available)) is sameas true
+      - >-
+        (share.folder_enumeration_mode
+         | default(fileserver_running.cluster.share_defaults.folder_enumeration_mode))
+        == 'AccessBased'
+      - >-
+        (share.caching_mode | default(fileserver_running.cluster.share_defaults.caching_mode))
+        == 'None'
+      - >-
+        (share.encrypt_data | default(fileserver_running.cluster.share_defaults.encrypt_data))
+        is sameas true
+      - >-
+        (share.encrypt_data | default(fileserver_running.cluster.share_defaults.encrypt_data))
+        == fileserver_running.smb.settings.EncryptData
+      - share.access | length == 1
+      - share.access[0].rights == 'Modify'
+      - share.access[0].share == 'Change'
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.shares[0] must preserve the data share's exact
+      share properties and one caller principal granted NTFS Modify and SMB Change. The role adds
+      the protected entries and fixed access-rule fields during translation.
+    quiet: true
+
+- name: 'VALIDATE | Require Safe Ordered Clustered Folder Declarations'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_running.cluster.shares | subelements('folders', skip_missing=True) }}
+  loop_control:
+    extended: true
+    label: "{{ declared_folder.0.name }}\\{{ declared_folder.1.path }}"
+    loop_var: 'declared_folder'
+  vars:
+    __fileserver_folder_paths__: >-
+      {{ declared_folder.0.folders | map(attribute='path') | map('lower') | list }}
+    __fileserver_folder_path__: "{{ declared_folder.1.path | lower }}"
+    __fileserver_folder_parent__: >-
+      {{ __fileserver_folder_path__.rsplit('\\', 1)[0]
+         if '\\' in __fileserver_folder_path__ else '' }}
+    __fileserver_prior_folder_paths__: >-
+      {{ ansible_loop.allitems[:ansible_loop.index0]
+         | selectattr('0', 'equalto', declared_folder.0)
+         | map(attribute='1.path') | map('lower') | list }}
+    __fileserver_folder_principals__: >-
+      {{ declared_folder.1.access | map(attribute='principal') | map('lower') | list }}
+    __fileserver_folder_keys__: ['access', 'inherit', 'path']
+  ansible.builtin.assert:
+    that:
+      - declared_folder.1 is mapping
+      - declared_folder.1.keys() | difference(__fileserver_folder_keys__) | length == 0
+      - >-
+        ['access', 'path'] | difference(declared_folder.1.keys()) | length == 0
+      - declared_folder.1.path is string
+      - declared_folder.1.path is match('^[^\\\\]+(?:\\\\[^\\\\]+)*$')
+      - declared_folder.1.path is not search('[:/*?"<>|]')
+      - declared_folder.1.path is not search('(^|\\\\)\.\.?($|\\\\)')
+      - (declared_folder.1.inherit | default(true)) is boolean
+      - declared_folder.1.access is sequence
+      - declared_folder.1.access is not string
+      - >-
+        __fileserver_folder_paths__ | unique | length
+        == __fileserver_folder_paths__ | length
+      - >-
+        __fileserver_folder_parent__ == ''
+        or __fileserver_folder_parent__ in __fileserver_prior_folder_paths__
+      - >-
+        __fileserver_folder_principals__ | unique | length
+        == __fileserver_folder_principals__ | length
+    fail_msg: >-
+      Refusing to run: each clustered-share folder must have a unique normalized relative path,
+      declare its parent earlier, optionally select inheritance with a boolean, and use unique
+      caller principals. The role adds protected entries during translation.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Clustered Folder Access Entries'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_running.cluster.shares | map(attribute='folders', default=[])
+       | flatten | map(attribute='access') | flatten }}
+  loop_control:
+    label: "{{ folder_entry.principal | default('malformed folder access entry') }}"
+    loop_var: 'folder_entry'
+  vars:
+    __fileserver_protected_principals__: ['nt authority\system', 'builtin\administrators']
+  ansible.builtin.assert:
+    that:
+      - folder_entry is mapping
+      - >-
+        folder_entry.keys() | list | sort == ['principal', 'rights']
+      - folder_entry.principal is string
+      - folder_entry.principal | length > 0
+      - folder_entry.principal | lower not in __fileserver_protected_principals__
+      - folder_entry.rights in ['FullControl', 'Modify', 'ReadAndExecute']
+    fail_msg: >-
+      Refusing to run: every compact folder access entry must contain exactly principal and
+      rights, name a non-protected principal, and use a supported NTFS right. SYSTEM,
+      Administrators, access_control_type, inheritance_flags, and propagation_flags are role-owned.
+    quiet: true
+
+- name: 'VALIDATE | Require The Access Group Declaration Shape'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_access_group_keys__: ['groups', 'path', 'unmanaged_principals']
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.access_groups is mapping
+      - >-
+        fileserver_running.cluster.access_groups.keys() | list | sort
+        == __fileserver_access_group_keys__
+      - fileserver_running.cluster.access_groups.path is string
+      - fileserver_running.cluster.access_groups.unmanaged_principals is sequence
+      - fileserver_running.cluster.access_groups.unmanaged_principals is not string
+      - fileserver_running.cluster.access_groups.unmanaged_principals is not mapping
+      - fileserver_running.cluster.access_groups.groups is sequence
+      - fileserver_running.cluster.access_groups.groups is not string
+      - fileserver_running.cluster.access_groups.groups is not mapping
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.access_groups must contain exactly path,
+      unmanaged_principals, and groups in the compact shared declaration.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Compact Access Groups'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.access_groups.groups }}"
+  loop_control:
+    label: "{{ group.principal | default('malformed access group') }}"
+    loop_var: 'group'
+  ansible.builtin.assert:
+    that:
+      - group is mapping
+      - group.keys() | list | sort == ['description', 'principal']
+      - group.principal is string
+      - >-
+        group.principal
+        is match('^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?\\\\DL-FS-[A-Za-z0-9][A-Za-z0-9-]*-(?:RO|RW)$')
+      - group.description is string
+      - group.description | trim | length > 0
+    fail_msg: >-
+      Refusing to run: every managed access group must contain exactly a non-empty description
+      and a DOMAIN\DL-FS-...-RO or DOMAIN\DL-FS-...-RW principal.
+    quiet: true
+
+- name: 'VALIDATE | Require Exact File-Side Principal Coverage'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_declared_principals__: >-
+      {{
+        ((fileserver_running.cluster.shares
+          | map(attribute='access') | flatten
+          | map(attribute='principal') | list)
+         + (fileserver_running.cluster.shares
+            | map(attribute='folders', default=[]) | flatten
+            | map(attribute='access') | flatten
+            | map(attribute='principal') | list))
+        | map('lower') | unique | list
+      }}
+    __fileserver_unmanaged_principals__: >-
+      {{ fileserver_running.cluster.access_groups.unmanaged_principals
+         | map('lower') | unique | list }}
+    __fileserver_managed_principals__: >-
+      {{ fileserver_running.cluster.access_groups.groups
+         | map(attribute='principal') | map('lower') | unique | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        __fileserver_unmanaged_principals__ | unique | length
+        == fileserver_running.cluster.access_groups.unmanaged_principals | length
+      - >-
+        __fileserver_managed_principals__ | unique | length
+        == fileserver_running.cluster.access_groups.groups | length
+      - >-
+        __fileserver_managed_principals__
+        | difference(__fileserver_declared_principals__) | length == 0
+      - >-
+        __fileserver_declared_principals__
+        | difference(__fileserver_managed_principals__
+                     + __fileserver_unmanaged_principals__) | length == 0
+    fail_msg: >-
+      Refusing to run: every managed access group principal must occur in the file-side share
+      declaration, and every file-side principal must be either managed or explicitly unmanaged.
+    quiet: true
+
+- name: 'VALIDATE | Require Managed Root Groups To Follow The Share Naming Convention'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_running.cluster.shares | subelements('access') }}"
+  loop_control:
+    label: "{{ root_grant.1.principal }}"
+    loop_var: 'root_grant'
+  vars:
+    __fileserver_managed_principals__: >-
+      {{ fileserver_running.cluster.access_groups.groups
+         | map(attribute='principal') | map('lower') | list }}
+    __fileserver_group_prefix__: >-
+      {{ root_grant.1.principal | regex_replace('DL-FS-.*$', '') }}
+    __fileserver_group_suffix__: "{{ 'RO' if root_grant.1.rights == 'ReadAndExecute' else 'RW' }}"
+    __fileserver_expected_principal__: >-
+      {{ __fileserver_group_prefix__ ~ 'DL-FS-' ~ root_grant.0.name
+         ~ '-' ~ __fileserver_group_suffix__ }}
+    __fileserver_expected_share_right__: >-
+      {{ 'Read' if root_grant.1.rights == 'ReadAndExecute' else 'Change' }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        root_grant.1.principal | lower not in __fileserver_managed_principals__
+        or root_grant.1.principal | lower == __fileserver_expected_principal__ | lower
+      - >-
+        root_grant.1.principal | lower not in __fileserver_managed_principals__
+        or root_grant.1.rights in ['ReadAndExecute', 'Modify']
+      - >-
+        root_grant.1.principal | lower not in __fileserver_managed_principals__
+        or root_grant.1.share == __fileserver_expected_share_right__
+    fail_msg: >-
+      Refusing to run: managed root groups must be named DOMAIN\DL-FS-Share-RO or -RW;
+      RO requires ReadAndExecute and Read, while RW requires Modify and Change.
+    quiet: true
+
+- name: 'VALIDATE | Require Managed Folder Groups To Follow The Folder Naming Convention'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {%- set grants = namespace(items=[]) -%}
+    {%- for share in fileserver_running.cluster.shares -%}
+    {%- for folder in share.folders | default([]) -%}
+    {%- for grant in folder.access -%}
+    {%- set grants.items = grants.items + [{
+      'share': share.name,
+      'folder': folder.path,
+      'principal': grant.principal,
+      'rights': grant.rights
+    }] -%}
+    {%- endfor -%}
+    {%- endfor -%}
+    {%- endfor -%}
+    {{ grants.items }}
+  loop_control:
+    label: "{{ folder_grant.principal }}"
+    loop_var: 'folder_grant'
+  vars:
+    __fileserver_managed_principals__: >-
+      {{ fileserver_running.cluster.access_groups.groups
+         | map(attribute='principal') | map('lower') | list }}
+    __fileserver_group_prefix__: >-
+      {{ folder_grant.principal | regex_replace('DL-FS-.*$', '') }}
+    __fileserver_group_suffix__: "{{ 'RO' if folder_grant.rights == 'ReadAndExecute' else 'RW' }}"
+    __fileserver_expected_principal__: >-
+      {{ __fileserver_group_prefix__ ~ 'DL-FS-' ~ folder_grant.share ~ '-'
+         ~ (folder_grant.folder | regex_replace('\\', '-')) ~ '-'
+         ~ __fileserver_group_suffix__ }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        folder_grant.principal | lower not in __fileserver_managed_principals__
+        or folder_grant.principal | lower == __fileserver_expected_principal__ | lower
+      - >-
+        folder_grant.principal | lower not in __fileserver_managed_principals__
+        or folder_grant.rights in ['ReadAndExecute', 'Modify']
+    fail_msg: >-
+      Refusing to run: managed folder groups must be named
+      DOMAIN\DL-FS-Share-Folder[-Folder...]-RO or -RW; RO requires ReadAndExecute and RW requires
+      Modify. Expected {{ __fileserver_expected_principal__ }} for
+      {{ folder_grant.principal }}.
     quiet: true

@@ -45,8 +45,9 @@ fileserver_defaults:
 
   #region ------ [ Cluster ] ----------------------------------------------------------------- #
 
-  # The Windows resource labels and share policy travel with the product. A caller replacing an
-  # access list supplies it whole; these residual entries remain the policy when no list is given.
+  # Windows resource labels and share safety policy travel with the product. Share names, paths,
+  # descriptions, and site principals belong to the caller. The role expands compact caller grants
+  # with these defaults and protected entries before invoking a Windows module.
   cluster:
     name_resource: 'Cluster Name'
     name_parameters:
@@ -58,26 +59,31 @@ fileserver_defaults:
         description: 'Failover cluster file share witness'
         caching_mode: 'None'
         encrypt_data: true
-    share:
-      name: 'data'
-      description: 'Highly available file data'
+    share_defaults:
       continuously_available: true
       folder_enumeration_mode: 'AccessBased'
       caching_mode: 'None'
       encrypt_data: true
-      ntfs_access:
-        - principal: 'NT AUTHORITY\SYSTEM'
-          access_control_type: 'Allow'
-          rights: 'FullControl'
-          inheritance_flags: 'ContainerInherit,ObjectInherit'
-          propagation_flags: 'None'
-        - principal: 'BUILTIN\Administrators'
-          access_control_type: 'Allow'
-          rights: 'FullControl'
-          inheritance_flags: 'ContainerInherit,ObjectInherit'
-          propagation_flags: 'None'
-      share_access:
-        - principal: 'BUILTIN\Administrators'
-          access_control_type: 'Allow'
-          access_right: 'Full'
+    protected_ntfs_access:
+      - principal: 'NT AUTHORITY\SYSTEM'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+        inheritance_flags: 'ContainerInherit,ObjectInherit'
+        propagation_flags: 'None'
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+        inheritance_flags: 'ContainerInherit,ObjectInherit'
+        propagation_flags: 'None'
+    protected_folder_access:
+      - principal: 'NT AUTHORITY\SYSTEM'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        rights: 'FullControl'
+    protected_share_access:
+      - principal: 'BUILTIN\Administrators'
+        access_control_type: 'Allow'
+        access_right: 'Full'
   #endregion --- [ Cluster ] ----------------------------------------------------------------- #
