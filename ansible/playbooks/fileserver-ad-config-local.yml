@@ -2,10 +2,10 @@
 # File: 'ansible/playbooks/fileserver-ad-config-local.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Creates and maintains the directory service account a Windows failover cluster is formed with.
-# Runs against a DOMAIN CONTROLLER, never against a cluster node, so it addresses the static
-# inventory beside the dynamic one -- a domain controller is standing infrastructure, and an
-# address written down for it stays true.
+# Creates and maintains the directory objects a Windows failover cluster and its file shares use.
+# Directory mutations run against a DOMAIN CONTROLLER, never against a cluster node, so they use
+# the static inventory beside the dynamic one -- a domain controller is standing infrastructure,
+# and an address written down for it stays true.
 #
 # This is deliberately not part of the fleet converge. Joining a machine to a directory needs the
 # least credential that can do it; forming a cluster needs a principal that is a local
@@ -19,11 +19,13 @@
 #
 # =========================================================================================== #
 ---
-- name: 'PLAY | Directory Service Account (domain controller, manual)'
+- name: 'PLAY | Directory Configuration (domain controller, manual)'
   hosts: 'domain_controllers'
   gather_facts: false
   become: false
   any_errors_fatal: true
+  vars_files:
+    - 'vars/fileserver-shares.yml'
 
   #region ------ [ Play: Variables ] ---------------------------------------------------------- #
   vars:
@@ -99,6 +101,26 @@
             tcnaw-hafs02a: '10.0.33.10'
             tcnaw-hafs01b: '10.0.65.10'
             tcnaw-hafs02b: '10.0.97.10'
+          access_groups:
+            path: "{{ fileserver_shares.access_groups.path }}"
+            unmanaged_principals: "{{ fileserver_shares.access_groups.unmanaged_principals }}"
+            groups: "{{ fileserver_shares.access_groups.groups }}"
+            shares: "{{ fileserver_shares.shares }}"
+            declared_principals: >-
+              {{
+                ((
+                  fileserver_shares.shares
+                  | map(attribute='access') | flatten
+                  | map(attribute='principal') | list
+                )
+                + (
+                  fileserver_shares.shares
+                  | map(attribute='folders', default=[]) | flatten
+                  | map(attribute='access') | flatten
+                  | map(attribute='principal') | list
+                ))
+                | unique(case_sensitive=false) | list
+              }}
     #endregion --- [ Roles: Directory Account ] ----------------------------------------------- #
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #

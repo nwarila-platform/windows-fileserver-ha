@@ -129,3 +129,336 @@
       Refusing to run: node DNS labels must be unique case-insensitively, and every IPv4 address
       must be unique across the static DNS declarations.
     quiet: true
+
+- name: 'VALIDATE | Require The Access Group Declaration Shape'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_ou_dn_pattern__: >-
+      ^OU=[^,=]+(?:,OU=[^,=]+)*,(?:DC=[A-Za-z0-9-]+,)*DC=[A-Za-z0-9-]+$
+    __fileserver_ad_config_access_group_keys__:
+      - 'declared_principals'
+      - 'groups'
+      - 'path'
+      - 'shares'
+      - 'unmanaged_principals'
+  ansible.builtin.assert:
+    that:
+      - fileserver_ad_config_running.access_groups | default(none) is mapping
+      - >-
+        fileserver_ad_config_running.access_groups.keys() | list | sort
+        == __fileserver_ad_config_access_group_keys__
+      - fileserver_ad_config_running.access_groups.path | default(none) is string
+      - >-
+        fileserver_ad_config_running.access_groups.path
+        | default('', true) is match(__fileserver_ad_config_ou_dn_pattern__)
+      - >-
+        fileserver_ad_config_running.access_groups.declared_principals | default(none)
+        is sequence
+      - >-
+        fileserver_ad_config_running.access_groups.declared_principals | default(none)
+        is not string
+      - >-
+        fileserver_ad_config_running.access_groups.declared_principals | default(none)
+        is not mapping
+      - >-
+        fileserver_ad_config_running.access_groups.unmanaged_principals | default(none)
+        is sequence
+      - >-
+        fileserver_ad_config_running.access_groups.unmanaged_principals | default(none)
+        is not string
+      - >-
+        fileserver_ad_config_running.access_groups.unmanaged_principals | default(none)
+        is not mapping
+      - fileserver_ad_config_running.access_groups.groups | default(none) is sequence
+      - fileserver_ad_config_running.access_groups.groups | default(none) is not string
+      - fileserver_ad_config_running.access_groups.groups | default(none) is not mapping
+      - fileserver_ad_config_running.access_groups.groups | default([], true) | length > 0
+      - fileserver_ad_config_running.access_groups.shares | default(none) is sequence
+      - fileserver_ad_config_running.access_groups.shares | default(none) is not string
+      - fileserver_ad_config_running.access_groups.shares | default(none) is not mapping
+      - fileserver_ad_config_running.access_groups.shares | default([], true) | length > 0
+    fail_msg: >-
+      Refusing to run: fileserver_ad_config.access_groups must contain an OU
+      distinguished-name path, declared_principals and unmanaged_principals lists, and non-empty
+      groups and compact shares lists.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Access Groups'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_principal_pattern__: >-
+      ^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?\\(?:[A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9 ._-]{0,62}[A-Za-z0-9])$
+  ansible.builtin.assert:
+    that:
+      - group is mapping
+      - group.keys() | list | sort == ['description', 'principal']
+      - group.principal | default(none) is string
+      - group.principal | default('', true) is match(__fileserver_ad_config_principal_pattern__)
+      - >-
+        group.principal | default('', true) is match(
+          '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?\\\\'
+          ~ '[A-Za-z0-9](?:[A-Za-z0-9-]{0,13}[A-Za-z0-9])?_GS-FileShare_'
+          ~ '[A-Z][A-Za-z0-9]*(?:-[A-Z][A-Za-z0-9]*)*-(?:Modify|Read)$'
+        )
+      - group.description | default(none) is string
+      - group.description | default('', true) | trim | length > 0
+    fail_msg: >-
+      Refusing to run: every fileserver_ad_config.access_groups.groups entry must contain exactly
+      a well-formed DOMAIN\Group principal and a non-empty description.
+    quiet: true
+  loop: "{{ fileserver_ad_config_running.access_groups.groups }}"
+  loop_control:
+    label: "{{ group.principal | default('malformed access group') }}"
+    loop_var: 'group'
+
+- name: 'VALIDATE | Require Well-Formed Compact File-Side Shares'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: "{{ fileserver_ad_config_running.access_groups.shares }}"
+  loop_control:
+    label: "{{ share.name | default('malformed share') }}"
+    loop_var: 'share'
+  vars:
+    __fileserver_ad_config_share_keys__:
+      - 'access'
+      - 'caching_mode'
+      - 'continuously_available'
+      - 'description'
+      - 'encrypt_data'
+      - 'folder_enumeration_mode'
+      - 'folders'
+      - 'name'
+      - 'path'
+  ansible.builtin.assert:
+    that:
+      - share is mapping
+      - share.keys() | difference(__fileserver_ad_config_share_keys__) | length == 0
+      - >-
+        ['access', 'description', 'name', 'path']
+        | difference(share.keys()) | length == 0
+      - share.name is string
+      - share.name is match('^[^\\\\/:*?"<>|]+$')
+      - share.access is sequence
+      - share.access is not string
+      - share.access is not mapping
+      - share.folders | default([]) is sequence
+      - share.folders | default([]) is not string
+      - share.folders | default([]) is not mapping
+    fail_msg: >-
+      Refusing to run: every file-side share supplied to the directory role must use the compact
+      declaration keys with required name, path, description, and access values.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Compact File-Side Root Grants'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_ad_config_running.access_groups.shares
+       | map(attribute='access') | flatten }}
+  loop_control:
+    label: "{{ access_entry.principal | default('malformed root grant') }}"
+    loop_var: 'access_entry'
+  vars:
+    __fileserver_ad_config_protected_principals__:
+      ['nt authority\system', 'builtin\administrators']
+  ansible.builtin.assert:
+    that:
+      - access_entry is mapping
+      - access_entry.keys() | list | sort == ['principal', 'rights', 'share']
+      - access_entry.principal is string
+      - access_entry.principal | length > 0
+      - access_entry.principal | lower not in __fileserver_ad_config_protected_principals__
+      - access_entry.rights in ['FullControl', 'Modify', 'ReadAndExecute']
+      - access_entry.share in ['Full', 'Change', 'Read']
+    fail_msg: >-
+      Refusing to run: compact root grants contain only principal, rights, and share and cannot
+      write SYSTEM, Administrators, access_control_type, inheritance_flags, or propagation_flags.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Compact File-Side Folders'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_ad_config_running.access_groups.shares
+       | subelements('folders', skip_missing=True) }}
+  loop_control:
+    label: "{{ declared_folder.0.name }}\\{{ declared_folder.1.path | default('malformed folder') }}"
+    loop_var: 'declared_folder'
+  ansible.builtin.assert:
+    that:
+      - declared_folder.1 is mapping
+      - declared_folder.1.keys() | difference(['access', 'inherit', 'path']) | length == 0
+      - >-
+        ['access', 'path'] | difference(declared_folder.1.keys()) | length == 0
+      - (declared_folder.1.inherit | default(true)) is boolean
+      - declared_folder.1.access is sequence
+      - declared_folder.1.access is not string
+      - declared_folder.1.access is not mapping
+    fail_msg: >-
+      Refusing to run: compact folders contain required path and access values plus only the
+      optional inherit boolean.
+    quiet: true
+
+- name: 'VALIDATE | Require Well-Formed Compact File-Side Folder Grants'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_ad_config_running.access_groups.shares
+       | map(attribute='folders', default=[]) | flatten
+       | map(attribute='access') | flatten }}
+  loop_control:
+    label: "{{ access_entry.principal | default('malformed folder grant') }}"
+    loop_var: 'access_entry'
+  vars:
+    __fileserver_ad_config_protected_principals__:
+      ['nt authority\system', 'builtin\administrators']
+  ansible.builtin.assert:
+    that:
+      - access_entry is mapping
+      - access_entry.keys() | list | sort == ['principal', 'rights']
+      - access_entry.principal is string
+      - access_entry.principal | length > 0
+      - access_entry.principal | lower not in __fileserver_ad_config_protected_principals__
+      - access_entry.rights in ['FullControl', 'Modify', 'ReadAndExecute']
+    fail_msg: >-
+      Refusing to run: compact folder grants contain only principal and rights and cannot write
+      SYSTEM, Administrators, access_control_type, inheritance_flags, or propagation_flags.
+    quiet: true
+- name: 'VALIDATE | Require Unique Declared Access Group Names'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_group_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.groups
+         | map(attribute='principal') | map('lower') | list }}
+    __fileserver_ad_config_group_names__: >-
+      {{ __fileserver_ad_config_group_principals__
+         | map('regex_replace', '^[^\\\\]+\\\\', '') | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        __fileserver_ad_config_group_principals__ | unique | list | length
+        == __fileserver_ad_config_group_principals__ | length
+      - >-
+        __fileserver_ad_config_group_names__ | unique | list | length
+        == __fileserver_ad_config_group_names__ | length
+    fail_msg: >-
+      Refusing to run: access group principals and their derived group names must be unique
+      case-insensitively.
+    quiet: true
+
+- name: 'VALIDATE | Require Exact File-Side Principal Coverage'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  vars:
+    __fileserver_ad_config_declared_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.declared_principals
+         | map('lower') | unique | list }}
+    __fileserver_ad_config_unmanaged_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.unmanaged_principals
+         | map('lower') | unique | list }}
+    __fileserver_ad_config_group_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.groups
+         | map(attribute='principal') | map('lower') | unique | list }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        __fileserver_ad_config_group_principals__
+        | difference(__fileserver_ad_config_declared_principals__) | length == 0
+      - >-
+        __fileserver_ad_config_declared_principals__
+        | difference(__fileserver_ad_config_group_principals__
+                     + __fileserver_ad_config_unmanaged_principals__) | length == 0
+    fail_msg: >-
+      Refusing to run: every managed access group principal must occur in the file-side share
+      declaration, and every file-side principal must be either managed or explicitly unmanaged.
+    quiet: true
+
+- name: 'VALIDATE | Require Managed Root Groups To Follow The Share Naming Convention'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {{ fileserver_ad_config_running.access_groups.shares | subelements('access') }}
+  loop_control:
+    label: "{{ root_grant.1.principal }}"
+    loop_var: 'root_grant'
+  vars:
+    __fileserver_ad_config_managed_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.groups
+         | map(attribute='principal') | map('lower') | list }}
+    __fileserver_ad_config_group_domain__: >-
+      {{ root_grant.1.principal | regex_replace('\\.*$', '') }}
+    __fileserver_ad_config_group_separator__: >-
+      {{ root_grant.1.principal[__fileserver_ad_config_group_domain__ | length] }}
+    __fileserver_ad_config_group_suffix__: >-
+      {{ 'Read' if root_grant.1.rights == 'ReadAndExecute' else 'Modify' }}
+    __fileserver_ad_config_expected_principal__: >-
+      {{ __fileserver_ad_config_group_domain__ ~ __fileserver_ad_config_group_separator__
+         ~ __fileserver_ad_config_group_domain__
+         ~ '_GS-FileShare_' ~ root_grant.0.name
+         ~ '-' ~ __fileserver_ad_config_group_suffix__ }}
+    __fileserver_ad_config_expected_share_right__: >-
+      {{ 'Read' if root_grant.1.rights == 'ReadAndExecute' else 'Change' }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        root_grant.1.principal | lower not in __fileserver_ad_config_managed_principals__
+        or root_grant.1.principal | lower
+           == __fileserver_ad_config_expected_principal__ | lower
+      - >-
+        root_grant.1.principal | lower not in __fileserver_ad_config_managed_principals__
+        or root_grant.1.rights in ['ReadAndExecute', 'Modify']
+      - >-
+        root_grant.1.principal | lower not in __fileserver_ad_config_managed_principals__
+        or root_grant.1.share == __fileserver_ad_config_expected_share_right__
+    fail_msg: >-
+      Refusing to run: managed root groups must be named
+      DOMAIN\DOMAIN_GS-FileShare_Share-Read or -Modify; Read requires ReadAndExecute and Read,
+      while Modify requires Modify and Change. Expected
+      {{ __fileserver_ad_config_expected_principal__ }} for {{ root_grant.1.principal }}.
+    quiet: true
+
+- name: 'VALIDATE | Require Managed Folder Groups To Follow The Folder Naming Convention'
+  when: (state | default('present') | string | lower | trim) == 'present'
+  loop: >-
+    {%- set grants = namespace(items=[]) -%}
+    {%- for share in fileserver_ad_config_running.access_groups.shares -%}
+    {%- for folder in share.folders | default([]) -%}
+    {%- for grant in folder.access -%}
+    {%- set grants.items = grants.items + [{
+      'share': share.name,
+      'folder': folder.path,
+      'principal': grant.principal,
+      'rights': grant.rights
+    }] -%}
+    {%- endfor -%}
+    {%- endfor -%}
+    {%- endfor -%}
+    {{ grants.items }}
+  loop_control:
+    label: "{{ folder_grant.principal }}"
+    loop_var: 'folder_grant'
+  vars:
+    __fileserver_ad_config_managed_principals__: >-
+      {{ fileserver_ad_config_running.access_groups.groups
+         | map(attribute='principal') | map('lower') | list }}
+    __fileserver_ad_config_group_domain__: >-
+      {{ folder_grant.principal | regex_replace('\\.*$', '') }}
+    __fileserver_ad_config_group_separator__: >-
+      {{ folder_grant.principal[__fileserver_ad_config_group_domain__ | length] }}
+    __fileserver_ad_config_group_suffix__: >-
+      {{ 'Read' if folder_grant.rights == 'ReadAndExecute' else 'Modify' }}
+    __fileserver_ad_config_expected_principal__: >-
+      {{ __fileserver_ad_config_group_domain__ ~ __fileserver_ad_config_group_separator__
+         ~ __fileserver_ad_config_group_domain__
+         ~ '_GS-FileShare_' ~ folder_grant.share ~ '-'
+         ~ (folder_grant.folder | regex_replace('\\', '-')) ~ '-'
+         ~ __fileserver_ad_config_group_suffix__ }}
+  ansible.builtin.assert:
+    that:
+      - >-
+        folder_grant.principal | lower not in __fileserver_ad_config_managed_principals__
+        or folder_grant.principal | lower
+           == __fileserver_ad_config_expected_principal__ | lower
+      - >-
+        folder_grant.principal | lower not in __fileserver_ad_config_managed_principals__
+        or folder_grant.rights in ['ReadAndExecute', 'Modify']
+    fail_msg: >-
+      Refusing to run: managed folder groups must be named
+      DOMAIN\DOMAIN_GS-FileShare_Share-Folder[-Folder...]-Read or -Modify; Read requires
+      ReadAndExecute and Modify requires Modify. Expected {{ __fileserver_ad_config_expected_principal__ }} for
+      {{ folder_grant.principal }}.
+    quiet: true

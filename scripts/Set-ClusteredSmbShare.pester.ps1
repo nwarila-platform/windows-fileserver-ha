@@ -207,6 +207,26 @@ Describe 'Set-ClusteredSmbShare' {
     $global:FsHaShareWrites | Should -HaveCount 0
   }
 
+  It 'accepts ReadAndExecute NTFS and Read SMB rights for a read-only root grant' {
+    $ReadOnlyNtfs = @($script:Ntfs | ForEach-Object -Process { @{} + $PSItem })
+    $ReadOnlyNtfs[2].rights = 'ReadAndExecute'
+    $ReadOnlyShare = @($script:ShareAccess | ForEach-Object -Process { @{} + $PSItem })
+    $ReadOnlyShare[1].access_right = 'Read'
+    $global:FsHaShareAcl.Access[2] = New-FakeRule -Principal 'TCN\Domain Users' -Rights 'ReadAndExecute'
+    $global:FsHaShareCurrentAccess[1].AccessRight = 'Read'
+    $ReadOnlyArguments = @{} + $script:Common
+    $ReadOnlyArguments.NtfsAccess = $ReadOnlyNtfs
+    $ReadOnlyArguments.ShareAccess = $ReadOnlyShare
+
+    $DirectoryResult = & $script:ScriptPath @ReadOnlyArguments -Mode DirectoryAcl |
+      ConvertFrom-Json
+    $ShareResult = & $script:ScriptPath @ReadOnlyArguments -Mode Share | ConvertFrom-Json
+
+    $DirectoryResult.changed | Should -BeFalse
+    $ShareResult.changed | Should -BeFalse
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
   It 'rejects rights beyond declared Modify and persisted Synchronize' {
     $global:FsHaShareAcl.Access[2] = New-FakeRule -Principal 'TCN\Domain Users' -Rights 'Modify, Synchronize, TakeOwnership'
     $Context = New-AnsibleContext -CheckMode
@@ -262,6 +282,55 @@ Describe 'Set-ClusteredSmbShare' {
     $Bad[0].principal = 'TCN\Domain Users'
     $BadArguments.NtfsAccess = $Bad
     { & $script:ScriptPath @BadArguments -Mode DirectoryAcl } | Should -Throw '*duplicate principals*'
+  }
+
+  It 'refuses a DACL change that would drop SYSTEM' {
+    $BadArguments = @{} + $script:Common
+    $BadArguments.NtfsAccess = @($script:Ntfs | Where-Object -FilterScript {
+        $PSItem.principal -ne 'NT AUTHORITY\SYSTEM'
+      })
+
+    { & $script:ScriptPath @BadArguments -Mode DirectoryAcl } |
+      Should -Throw '*must retain one Allow FullControl entry for protected SID S-1-5-18*'
+
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'refuses a DACL change that would drop Administrators' {
+    $BadArguments = @{} + $script:Common
+    $BadArguments.NtfsAccess = @($script:Ntfs | Where-Object -FilterScript {
+        $PSItem.principal -ne 'BUILTIN\Administrators'
+      })
+
+    { & $script:ScriptPath @BadArguments -Mode DirectoryAcl } |
+      Should -Throw '*must retain one Allow FullControl entry for protected SID S-1-5-32-544*'
+
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'predicts an absent root and share in check mode with zero writes' {
+    $global:FsHaSharePathExists = $False
+    $global:FsHaShareObject = $Null
+    $global:FsHaShareCurrentAccess = @()
+    $Context = New-AnsibleContext -CheckMode
+
+    & $script:ScriptPath @script:Common -Mode DirectoryAcl | Out-Null
+    $Context.Changed | Should -BeTrue
+    $Context.Result.actions | Should -Contain 'enforce_directory_acl'
+
+    & $script:ScriptPath @script:Common -Mode Share | Out-Null
+    $Context.Changed | Should -BeTrue
+    $Context.Result.actions | Should -Contain 'create_share'
+    $global:FsHaShareWrites | Should -HaveCount 0
+  }
+
+  It 'predicts share state after an unwritten check-mode DACL correction' {
+    $global:FsHaShareAcl.AreAccessRulesProtected = $False
+    $Context = New-AnsibleContext -CheckMode
+
+    { & $script:ScriptPath @script:Common -Mode Share } | Should -Not -Throw
+    $Context.CheckMode | Should -BeTrue
+    $global:FsHaShareWrites | Should -HaveCount 0
   }
 
   It 'returns exact share no-change state through the Ansible transport' {
