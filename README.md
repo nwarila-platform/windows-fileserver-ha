@@ -30,11 +30,11 @@ organization's single PowerShell definition,
   recap shows an honest `ok`/`changed` per action;
 - scripts run identically standalone (JSON result) and under Ansible, so specs and dev shells
   exercise the exact production path;
-- CI is one thin workflow ([powershell.yml](.github/workflows/powershell.yml)) with
-  `pester-matrix-pr` for pull requests and `pester-matrix-push` for main-branch pushes. Each job
-  imports the same reusable matrix: one leg per script, house analyzer at zero findings, then the
-  spec. Both triggers select PowerShell script and workflow file changes. Every job's immutable
-  `uses` and `with.template-ref` values stay equal.
+- CI is one thin workflow ([powershell.yml](.github/workflows/powershell.yml)) whose single
+  `pester-matrix` job imports the org's reusable matrix: one leg per script, house analyzer at zero
+  findings, then the spec. It runs for pull requests and main-branch pushes that change a
+  PowerShell script or the workflow file. The immutable revision in the job's `uses` value and its
+  `with.template-ref` value stay equal.
 
 Repo wiring: [docs/reference/powershell-style-guide.md](docs/reference/powershell-style-guide.md).
 Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ansible-style-guide.md).
