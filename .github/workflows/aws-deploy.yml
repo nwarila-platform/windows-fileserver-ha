@@ -45,6 +45,17 @@ name: AWS Deploy
         default: '0'
   push:
     branches: [ main ]
+    paths:
+      - 'terraform/**'
+      - 'ansible/**'
+      - 'scripts/**'
+      - 'requirements-quality.txt'
+      - 'requirements-quality.yml'
+      - 'quality-tools.env'
+      - '.github/ansible-framework-pin'
+      - '.github/terraform-framework-pin'
+      - '.github/workflows/aws-deploy.yml'
+      - '.github/workflows/aws-reaper.yml'
   schedule:
     # Avoid the top-of-hour load spike documented for scheduled Actions workflows.
     - cron: '17 9 * * 1'
