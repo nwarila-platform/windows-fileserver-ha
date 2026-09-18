@@ -24,13 +24,14 @@ spec pairing is wrong). The composed deploy lifecycle runs it as a build step wh
 
 ## CI
 
-`.github/workflows/powershell.yml` is a thin caller with two jobs: `pester-matrix-pr` for pull
-requests and `pester-matrix-push` for main-branch pushes. Both triggers select a `*.ps1` under
-`scripts/` or workflow file changes. Each job imports the org's reusable `pester-matrix`, which
-discovers every pair under `scripts/` (only `.ps1` files participate; the directory is the generic
-script home shared with Python and bash tooling) and runs one matrix leg per script (house analyzer
-at zero findings, then the spec). Adopting new organizational tests requires the same immutable
-revision on all four caller values: each job's `uses` line and `with.template-ref`.
+`.github/workflows/powershell.yml` is a thin caller with one job, `pester-matrix`, for pull requests
+and main-branch pushes; both triggers select a `*.ps1` under `scripts/` or workflow file changes.
+The job imports the org's reusable `pester-matrix`, which discovers every pair under `scripts/`
+(only `.ps1` files participate; the directory is the generic script home shared with Python and
+bash tooling) and runs one matrix leg per script (house analyzer at zero findings, then the spec).
+Its `report` job requests `checks: write` and `pull-requests: write` from every caller, so the
+caller job grants both. Adopting new organizational tests requires the same immutable revision on
+both caller values: the `uses` line and `with.template-ref`.
 
 ## The local loop
 
