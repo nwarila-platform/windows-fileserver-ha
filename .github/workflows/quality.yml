@@ -112,7 +112,7 @@ jobs:
           playbooks=()
           while IFS= read -r playbook; do
             playbooks+=("${GITHUB_WORKSPACE}/${playbook}")
-          done < <(git -C "${GITHUB_WORKSPACE}" ls-files -- 'ansible/playbooks/*.yml')
+          done < <(git -C "${GITHUB_WORKSPACE}" ls-files -- ':(glob)ansible/playbooks/*.yml')
           ansible-lint "${roles[@]}" "${playbooks[@]}"
 
       - name: Check Ansible playbook syntax
