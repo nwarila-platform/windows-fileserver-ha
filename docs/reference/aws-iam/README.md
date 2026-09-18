@@ -44,7 +44,7 @@ The deploy workflow assumes the runner role through DEPLOY_ROLE; the reaper work
 | `nwarila-platform_windows-fileserver-ha_runner_s3.json` | Manage the two Terraform state objects and list only those two keys; read the OpenVPN and directory-join artifacts |
 | `nwarila-platform_windows-fileserver-ha_runner_ebs.json` | Describe volumes; create tagged volumes; attach, detach and delete owned volumes |
 | `nwarila-platform_windows-fileserver-ha_reaper_ebs.json` | Describe volumes and volume attributes; detach owned volumes from owned instances; delete owned volumes |
-| `nwarila-platform_windows-fileserver-ha_reaper_ec2.json` | Read destroy-refresh EC2 metadata; terminate owned instances |
+| `nwarila-platform_windows-fileserver-ha_reaper_ec2.json` | Read destroy-refresh EC2 metadata; stop and terminate owned instances |
 | `nwarila-platform_windows-fileserver-ha_reaper_eni.json` | Describe ENIs and addresses; detach and delete owned ENIs; detach ENIs from owned instances |
 | `nwarila-platform_windows-fileserver-ha_reaper_iam.json` | Read `nwarila-ec2-profile` and `nwarila-ec2-apprepo-profile` |
 | `nwarila-platform_windows-fileserver-ha_reaper_s3.json` | Manage the two Terraform state objects and list only those two keys |

@@ -7,9 +7,11 @@
 # suppress it), finds instances tagged to this repository that no live deploy accounts for,
 # and destroys the stack they belong to.
 #
-#   * IDENTITY: assumes the repository's REAPER role — describes, tag-scoped terminate/
+#   * IDENTITY: assumes the repository's REAPER role — describes, tag-scoped stop/terminate/
 #     detach/revoke/delete, and state-file access only. It cannot create, run, tag, read
-#     artifacts, or touch credentials.
+#     artifacts, or touch credentials. Stop is there because a data volume detaches from a
+#     stopped instance: aws_volume_attachment sets stop_instance_before_detaching, so without
+#     it the destroy 403s on the first attachment and the stack is never reaped.
 #   * THE RATIFIED REFRESH DECISION: the reaper role deliberately has NO kms or ssm grants,
 #     so `terraform destroy` here MUST run with -refresh=false — a refresh would resolve
 #     data sources (kms alias, ami parameters) the role cannot read. Destroy-from-state

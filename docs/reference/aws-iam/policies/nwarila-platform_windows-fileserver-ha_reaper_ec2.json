@@ -20,9 +20,12 @@
       ]
     },
     {
-      "Sid": "TerminateOwnedInstancesOnly",
+      "Sid": "StopAndTerminateOwnedInstancesOnly",
       "Effect": "Allow",
-      "Action": "ec2:TerminateInstances",
+      "Action": [
+        "ec2:StopInstances",
+        "ec2:TerminateInstances"
+      ],
       "Resource": "arn:aws:ec2:us-east-1:<account-id>:instance/*",
       "Condition": {
         "StringEquals": {
