@@ -39,6 +39,7 @@
 !/ansible/applications/fileserver_ad_config/vars/
 !/ansible/inventory/
 !/ansible/playbooks/
+!/ansible/playbooks/vars/
 !/docs/
 !/docs/explanation/
 !/docs/reference/
@@ -82,6 +83,7 @@
 !/ansible/applications/fileserver/files/Set-ClusterNameParameters.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusterSharedDisks.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusteredFileServer.ps1.stub
+!/ansible/applications/fileserver/files/Set-ClusteredFolderTree.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusteredSmbShare.ps1.stub
 !/ansible/applications/fileserver/files/Set-SmbServerHardening.ps1.stub
 !/ansible/applications/fileserver/files/Set-DomainControllerReverseZone.ps1.stub
@@ -93,6 +95,7 @@
 !/ansible/applications/fileserver/vars/windows.yml
 !/ansible/applications/fileserver_ad_config/README.md
 !/ansible/applications/fileserver_ad_config/files/Set-ClusterDirectoryRights.ps1.stub
+!/ansible/applications/fileserver_ad_config/files/Set-FileShareAccessGroup.ps1.stub
 !/ansible/applications/fileserver_ad_config/defaults/main.yml
 !/ansible/applications/fileserver_ad_config/meta/main.yml
 !/ansible/applications/fileserver_ad_config/tasks/clean_windows.yml
@@ -105,6 +108,7 @@
 !/ansible/inventory/domain_controllers.yml
 !/ansible/playbooks/fileserver-ad-config-local.yml
 !/ansible/playbooks/fileserver-aws.yml
+!/ansible/playbooks/vars/fileserver-shares.yml
 
 # --- [ allowed: published documentation ] --------------------------------------------------- #
 # Enumerated: local working notes live alongside these on disk and are never published.
@@ -142,6 +146,8 @@
 !/scripts/Set-ClusterFileShareWitnessQuorum.ps1
 !/scripts/Set-FileServerCluster.ps1
 !/scripts/Set-FileServerCluster.pester.ps1
+!/scripts/Set-FileShareAccessGroup.ps1
+!/scripts/Set-FileShareAccessGroup.pester.ps1
 !/scripts/Get-ClusteredFileServerOwner.ps1
 !/scripts/Get-ClusteredFileServerOwner.pester.ps1
 !/scripts/Set-ClusterNameParameters.ps1
@@ -150,6 +156,8 @@
 !/scripts/Set-ClusterSharedDisks.pester.ps1
 !/scripts/Set-ClusteredFileServer.ps1
 !/scripts/Set-ClusteredFileServer.pester.ps1
+!/scripts/Set-ClusteredFolderTree.ps1
+!/scripts/Set-ClusteredFolderTree.pester.ps1
 !/scripts/Set-ClusteredSmbShare.ps1
 !/scripts/Set-ClusteredSmbShare.pester.ps1
 !/scripts/Set-SmbServerHardening.ps1

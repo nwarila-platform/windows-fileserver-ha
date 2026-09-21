@@ -4,7 +4,7 @@
 
 <#
     .SYNOPSIS
-        Enforces the clustered data-directory DACL or publishes its clustered SMB share.
+        Enforces a clustered share-root DACL or publishes its clustered SMB share.
     .DESCRIPTION
         Separates complete NTFS policy enforcement from share publication while
         preserving one exact read, diff, mutation, and verification contract.
@@ -136,7 +136,7 @@ $ConvertToDesiredNtfsAccess = {
   ForEach ($Entry In $Declaration) {
     $Keys = @($Entry.Keys | ForEach-Object -Process { [System.String]$PSItem } | Sort-Object)
     If (@(Compare-Object -ReferenceObject $ExpectedKeys -DifferenceObject $Keys).Count -gt 0 -or
-      [System.String]$Entry.access_control_type -ne 'Allow' -or [System.String]$Entry.rights -notin @('FullControl', 'Modify') -or
+      [System.String]$Entry.access_control_type -ne 'Allow' -or [System.String]$Entry.rights -notin @('FullControl', 'Modify', 'ReadAndExecute') -or
       [System.String]$Entry.inheritance_flags -ne 'ContainerInherit,ObjectInherit' -or [System.String]$Entry.propagation_flags -ne 'None') {
       Throw 'NtfsAccess contains an unsupported key or access value.'
     }
@@ -211,8 +211,24 @@ $GetNtfsDisagreements = {
 }
 
 $GetNtfsState = {
-  Param ([System.String]$LiteralPath, [System.Object[]]$Desired)
-  If (-not (Test-Path -LiteralPath $LiteralPath -PathType Container)) { Throw ('Path {0} does not exist as a directory.' -f $LiteralPath) }
+  Param (
+    [System.String]$LiteralPath,
+    [System.Object[]]$Desired,
+    [System.Boolean]$AllowAbsent = $False
+  )
+  If (-not (Test-Path -LiteralPath $LiteralPath -PathType Container)) {
+    If (-not $AllowAbsent) {
+      Throw ('Path {0} does not exist as a directory.' -f $LiteralPath)
+    }
+    Return [PSCustomObject]@{
+      acl             = $Null
+      protected       = $False
+      inherited_count = 0
+      desired         = @($Desired.canonical | Sort-Object)
+      current         = @()
+      exact           = $False
+    }
+  }
   $Acl = Get-Acl -LiteralPath $LiteralPath
   $InheritedCount = 0
   $Current = @()
@@ -311,7 +327,16 @@ $ConvertToSafeShareState = {
 
 $DesiredNtfs = @(& $ConvertToDesiredNtfsAccess -Declaration $NtfsAccess)
 $DesiredShare = @(& $ConvertToDesiredShareAccess -Declaration $ShareAccess)
-$BeforeNtfs = & $GetNtfsState -LiteralPath $Path -Desired $DesiredNtfs
+ForEach ($ProtectedSid In @('S-1-5-18', 'S-1-5-32-544')) {
+  $ProtectedMatches = @($DesiredNtfs | Where-Object -FilterScript {
+      $PSItem.sid -eq $ProtectedSid -and $PSItem.access_type -eq 'Allow' -and
+      $PSItem.rights -eq 'FullControl'
+    })
+  If ($ProtectedMatches.Count -ne 1) {
+    Throw ('NtfsAccess must retain one Allow FullControl entry for protected SID {0}.' -f $ProtectedSid)
+  }
+}
+$BeforeNtfs = & $GetNtfsState -LiteralPath $Path -Desired $DesiredNtfs -AllowAbsent $Ansible.CheckMode
 $Actions = [System.Collections.Generic.List[System.String]]::new()
 
 If ($Mode -eq 'DirectoryAcl') {
@@ -344,7 +369,9 @@ If ($Mode -eq 'DirectoryAcl') {
   $Before = $BeforeNtfs
   $After = $AfterNtfs
 } Else {
-  If (-not $BeforeNtfs.exact) { Throw ('Directory DACL on {0} must be exact before share publication.' -f $Path) }
+  If (-not $BeforeNtfs.exact -and -not $Ansible.CheckMode) {
+    Throw ('Directory DACL on {0} must be exact before share publication.' -f $Path)
+  }
   $BeforeShare = & $GetShareState -ShareName $Name -ShareScope $ScopeName -DesiredAccess $DesiredShare
   If ($Null -ne $BeforeShare.share -and [System.String]$BeforeShare.share.Path -ine $Path) {
     Throw ('Share {0} in scope {1} exists at a different path.' -f $Name, $ScopeName)

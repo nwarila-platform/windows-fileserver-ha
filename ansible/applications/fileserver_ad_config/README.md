@@ -2,7 +2,8 @@
 
 Creates and maintains the directory objects a Windows failover cluster is formed with: the service
 account, the cluster name object, the file server's client access point, and the rights that tie
-them together.
+them together. It also creates and updates the Global security groups named by the file
+share declaration.
 
 ## Why this is a separate role
 
@@ -44,6 +45,26 @@ create computer objects:
 
 The cluster takes over objects that already exist. It cannot create others, and it holds nothing
 at the OU level.
+
+## File share access groups
+
+Both playbooks load `ansible/playbooks/vars/fileserver-shares.yml`. That one file declares each
+managed group, its description, its OU, the explicitly unmanaged principals, and every share and
+folder grant. The manual playbook derives the complete file-side principal set from its loaded
+share list and passes both sides to the role. The role refuses a managed group absent from the
+file-side declaration and refuses any file-side principal that is neither managed nor explicitly
+unmanaged.
+
+Managed principals follow `DOMAIN\DOMAIN_GS-FileShare_Share[-Folder...]-Modify|Read`; the two
+domain tokens must match, and Title-Case share and folder segments must match the compact file-side
+declaration case-insensitively. `Read` pairs with `ReadAndExecute`, and `Modify` pairs with `Modify`.
+Explicitly unmanaged non-group principals are exempt. The directory role also refuses caller-written
+protected principals or fixed access-rule fields, matching the file-server role's compact boundary.
+
+Only group existence, OU, Global security scope, and description are converged. Membership
+is never passed to the convergence script, removing a group from the declaration does not delete
+it, and the script freshly reads and verifies each converged group before reporting success. The
+immediate second manual run is the idempotence proof and must report no changes.
 
 ## State
 
