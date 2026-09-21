@@ -213,7 +213,7 @@ jobs:
           echo "CI_STAGED_PUBLIC_KEY=${staged_public}" >> "${GITHUB_ENV}"
 
       - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.DEPLOY_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
@@ -479,7 +479,7 @@ jobs:
 
       - name: Refresh AWS credentials for teardown (OIDC)
         if: always() && steps.tf-init.outcome == 'success'
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ env.DEPLOY_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
