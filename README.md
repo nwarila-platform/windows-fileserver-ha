@@ -3,16 +3,17 @@
 Target architecture: a four-node Windows Server 2025 WSFC stretch cluster across two
 Availability Zones, Storage Replica between per-AZ shared storage, and a domain-joined file-share
 witness in a third AZ. The implemented service is deliberately narrower: one AZ-a clustered
-file-server role and its encrypted continuously available `data` share. This repository is a
-data-only consumer of the pinned nwarila-platform Terraform and Ansible frameworks.
+file-server role, its encrypted continuously available `data` share, and Node and File Share
+Majority quorum through the dedicated witness. This repository is a data-only consumer of the
+pinned nwarila-platform Terraform and Ansible frameworks.
 
 ## Status
 
 The fleet playbook codifies a four-node cluster, adopts both EBS volumes by runtime identity,
-constrains each disk to its declared owner pair, creates `TCNAW-HAFS01` on the AZ-a disk, and
-publishes `\\TCNAW-HAFS01\data` with exact protected NTFS and share ACLs. Its ungated final
-readback proves that implemented surface on every run. Witness quorum, the AZ-b file-server role,
-and Storage Replica remain explicitly deferred with exit criteria in
+constrains each disk to its declared owner pair, creates `TCNAW-HAFS01` on the AZ-a disk,
+publishes `\\TCNAW-HAFS01\data` with exact protected NTFS and share ACLs, and converges the
+third-AZ witness with exact CNO rights before selecting Node and File Share Majority quorum. The
+AZ-b file-server role and Storage Replica remain explicitly deferred with exit criteria in
 [docs/explanation/technical-debt.md](docs/explanation/technical-debt.md).
 
 ## The PowerShell development model
@@ -45,7 +46,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
 | `ansible/applications/fileserver_ad_config/` | Supporting role that prestages the directory objects and their scoped rights. |
-| `ansible/playbooks/fileserver-aws.yml` | Prepares the fleet, applies the Administrator baseline, resolves the cluster credential once, forms the cluster and AZ-a service, performs the final proof, and scrubs the credential variable. |
+| `ansible/playbooks/fileserver-aws.yml` | Prepares the fleet, applies the Administrator baseline, resolves the cluster credential once, forms the cluster and AZ-a service, configures witness quorum, and scrubs the credential variable. |
 | `ansible/playbooks/fileserver-ad-config-local.yml` | Manual domain-controller playbook for the supporting directory role. |
 | `ansible/inventory/` | The tracked EC2 dynamic inventory and its group contract (`fileserver_nodes`, `fileserver_witness`, and overlapping singleton `fileserver_cluster_former`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |

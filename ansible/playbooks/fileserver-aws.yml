@@ -3,17 +3,15 @@
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
 # Brings five ephemeral EC2 instances through host preparation, forms the declared four-node
-# cluster under its service account, adopts both shared disks, and publishes the implemented AZ-a
-# clustered data share. The witness builds the tunnel and joins the domain with the nodes, but
-# remains outside the cluster and deferred quorum.
+# cluster under its service account, adopts both shared disks, publishes the implemented AZ-a
+# clustered data share, and configures its dedicated third-AZ file-share witness.
 #
 # Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
 # ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
 #
 # The order is load-bearing: Administrator-owned readiness and node prerequisites precede a
 # resolve-once credential boundary, singleton cluster formation, fresh readback, and credential
-# scrub. The final proof reports witness quorum, the AZ-b file-server role, and Storage Replica as
-# deferred.
+# scrub. The AZ-b file-server role and Storage Replica remain deferred.
 #
 # gather_facts and become are disabled throughout because the framework's ansible.cfg makes
 # gathering explicit and escalation off. Implicit gathering would run a module over the shell
@@ -218,6 +216,12 @@
               name: 'TCNAW-HAFS01'
               static_addresses: ['10.0.1.12', '10.0.33.12']
               ignored_network_addresses: ['10.0.64.0', '10.0.96.0']
+            witness:
+              host: 'tcnaw-witnes01c'
+              cluster_principal: 'TCN\TCNAW-FSCL01$'
+              node_addresses: ['10.0.1.10', '10.0.33.10', '10.0.65.10', '10.0.97.10']
+              share:
+                path: 'C:\ClusterWitness'
             share:
               path: 'D:\shares\data'
               ntfs_access:
