@@ -45,7 +45,9 @@
       "Action": "s3:GetObject",
       "Resource": [
         "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/svc-domainjoin-password.txt",
-        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn"
+        "arn:aws:s3:::<account-id>-ansible/host_roles/remote_client/aws-ec2-test.ovpn",
+        "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/jenkins_runner-ssh-private-key",
+        "arn:aws:s3:::<account-id>-ansible/host_roles/domain_member/jenkins_runner-ssh-public-key"
       ],
       "Condition": {
         "StringEquals": {

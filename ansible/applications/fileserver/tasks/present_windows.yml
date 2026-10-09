@@ -410,7 +410,8 @@
     #region ------ [ Process: Form The File Server Cluster ] ---------------------------------- #
 
     - name: 'PROCESS | Run The File Server Cluster Formation'
-      # The connection password is reused only for the delegation-capable batch logon.
+      # The service-account password is used for the signed/sealed CNO LDAP operation and the
+      # delegation-capable batch logon.
       no_log: true
       register: '__fileserver_cluster__'
 
@@ -420,7 +421,7 @@
         parameters:
           ClusterName: "{{ fileserver_running.cluster.name }}"
           Node: "{{ fileserver_running.cluster.nodes }}"
-          Password: "{{ ansible_password }}"
+          Password: "{{ fileserver_running.cluster.service_account_password }}"
           ReacquireTimeoutSeconds: 120
           StaticAddress: "{{ fileserver_running.cluster.static_addresses }}"
           TimeoutSeconds: 1200
@@ -508,7 +509,7 @@
     #region ------ [ Process: Converge The Clustered File Server Role ] ----------------------- #
 
     - name: 'PROCESS | Run The Clustered File Server Role Convergence'
-      # The connection password is reused only for the delegation-capable batch logon.
+      # The service account password is used only for the delegation-capable batch logon.
       no_log: true
       async: 1320
       poll: 15
@@ -526,7 +527,7 @@
           TimeoutSeconds: 1200
           HomeVolumeId: "{{ home_disk.volume_id }}"
           Owners: "{{ home_disk.owners }}"
-          Password: "{{ ansible_password }}"
+          Password: "{{ fileserver_running.cluster.service_account_password }}"
           StaticAddress: "{{ fileserver_running.cluster.file_server.static_addresses }}"
           IgnoredNetworkAddress: >-
             {{ fileserver_running.cluster.file_server.ignored_network_addresses }}

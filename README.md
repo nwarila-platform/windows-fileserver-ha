@@ -46,7 +46,7 @@ Task-authoring rules: [docs/reference/ansible-style-guide.md](docs/reference/ans
 |---|---|
 | `ansible/applications/fileserver/` | The application role: v3.3.0 framework loader, OS entrypoints, merged-config validation, and per-script `.ps1.stub` markers under `files/`. |
 | `ansible/applications/fileserver_ad_config/` | Supporting role that prestages the directory objects and their scoped rights. |
-| `ansible/playbooks/fileserver-aws.yml` | Prepares the fleet, applies the Administrator baseline, resolves the cluster credential once, forms the cluster and AZ-a service, configures witness quorum, and scrubs the credential variable. |
+| `ansible/playbooks/fileserver-aws.yml` | Selects the launch or domain identity, prepares the fleet through the domain transition, selects the cluster service account for formation, forms the cluster and AZ-a service, configures witness quorum, and clears the source credential variable. |
 | `ansible/playbooks/fileserver-ad-config-local.yml` | Manual domain-controller playbook for the supporting directory role. |
 | `ansible/inventory/` | The tracked EC2 dynamic inventory and its group contract (`fileserver_nodes`, `fileserver_witness`, and overlapping singleton `fileserver_cluster_former`). |
 | `.github/workflows/powershell.yml` | Thin caller of the org's standardized PowerShell test matrix. |

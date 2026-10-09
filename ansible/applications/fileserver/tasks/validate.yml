@@ -21,6 +21,19 @@
       Refusing to run: fileserver.execution_scope must be either 'node' or 'cluster'.
     quiet: true
 
+- name: 'VALIDATE | Require The Cluster Service Account Password'
+  when:
+    - (state | default('present') | string | lower | trim) == 'present'
+    - fileserver_running.execution_scope == 'cluster'
+  ansible.builtin.assert:
+    that:
+      - fileserver_running.cluster.service_account_password | default(none) is string
+      - fileserver_running.cluster.service_account_password | default('', true) | length > 0
+    fail_msg: >-
+      Refusing to run: fileserver.cluster.service_account_password must be a non-empty string for
+      cluster-scope convergence.
+    quiet: true
+
 - name: 'VALIDATE | Require A Non-Empty SMB Baseline Of Well-Formed Property Names'
   when: (state | default('present') | string | lower | trim) == 'present'
   ansible.builtin.assert:

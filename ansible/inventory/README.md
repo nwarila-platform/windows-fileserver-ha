@@ -24,10 +24,11 @@ colliding with the role input that selects `present_windows.yml` or `absent_wind
 
 | Value | Derived from |
 |---|---|
-| Operating system, login account, shell type | `platform_details`, which every instance carries and which names the platform it is licensed as |
+| Operating system and shell type | `platform_details`, which every instance carries and which names the platform it is licensed as |
 | Connection, port, address, SSM proxy | the `Connection` tag |
+| Connection identity | the playbook's ordered credential sets, selected by `credential_resolver` |
 | `ENV` (the framework loader's input) | the `Environment` tag |
-| Private key | `CI_PRIVATE_KEY` when the workflow staged one, else the account key pair |
+| Launch key path | `CI_PRIVATE_KEY` when the workflow staged one, else the account key pair path |
 
 The `Connection` tag takes four values, and absent means `ssh-direct`:
 
@@ -38,20 +39,21 @@ The `Connection` tag takes four values, and absent means `ssh-direct`:
 | `winrm-direct` | WinRM over HTTPS to the routable address on 5986 |
 | `winrm-ssm` | WinRM over HTTPS to a local port an SSM port-forwarding session already holds open |
 
-A WinRM leg also needs a password, because WinRM has no key authentication; the SSH legs
-authenticate with the key pair.
+This deployment declares SSH for every host. A future WinRM leg would also need a matching password
+credential set, the controller dependency, and a listener on the target.
 
 ## Running the playbook by hand
 
-Export `GITHUB_REPOSITORY_ID`, `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` plus AWS credentials, then
-point `-i` at `aws_ec2.yml` while the instance still exists. Set `ENVIRONMENT` if the deployment is
-not the default `test`. The play asserts its ownership contract, so a run whose tags do not match
-fails closed.
+Export `GITHUB_REPOSITORY_ID`, `GITHUB_RUN_ID` and `GITHUB_REPOSITORY` plus AWS credentials, and
+provide a usable SSH agent socket through `ANSIBLE_SSH_AGENT` or `SSH_AUTH_SOCK`. Then point `-i` at
+`aws_ec2.yml` while the instance still exists. Set `ENVIRONMENT` if the deployment is not the
+default `test`. The play asserts its ownership contract, so a run whose tags do not match fails
+closed.
 
 The composed local command is:
 
 ```bash
-ENVIRONMENT=dev scripts/compose-and-run.sh \
+ANSIBLE_SSH_AGENT="${SSH_AUTH_SOCK}" ENVIRONMENT=dev scripts/compose-and-run.sh \
   -e "aws_account_id=${AWS_ACCOUNT_ID}" \
   -e 'aws_region=us-east-1'
 ```
