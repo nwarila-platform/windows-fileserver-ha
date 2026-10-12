@@ -41,3 +41,17 @@ formation for cancelled runs, gated on an explicit `fresh_deployment` declaratio
 cluster's identity cannot be disabled. This needs no new directory rights, domain controller in the
 CI inventory, or RSAT AD tooling: every node has `System.DirectoryServices` and LDAP reachability
 over the tunnel.
+
+## TD-005 — Managed-host identity is not authenticated before contact
+
+**Gap:** `ansible/inventory/aws_ec2.yml` sets `StrictHostKeyChecking=no` and
+`UserKnownHostsFile=/dev/null`, so direct SSH accepts every host key and records none.
+**Why debt, not a defect:** All five declared connections are direct SSH; there is no Session
+Manager or WinRM leg. Short-lived hosts and run-scoped security-group paths narrow exposure without
+authenticating the endpoint, so the deployment works while retaining that trust gap.
+**Correction:** Before the first `credential_resolver` attempt, acquire each host's public SSH keys
+through a platform-authenticated channel, write them to a run-scoped known-hosts file, and require
+`StrictHostKeyChecking=yes`.
+**Exit:** Every host's keys are acquired before its first connection; a rebuilt host needs no manual
+known-hosts edit; a mismatched key is refused before authentication; and the inventory uses the
+run-scoped file with `StrictHostKeyChecking=yes`, never `no`, `accept-new`, or `/dev/null`.

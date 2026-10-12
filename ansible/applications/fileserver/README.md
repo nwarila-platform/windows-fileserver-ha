@@ -5,15 +5,18 @@ application role; directory prestaging is owned by the sibling `fileserver_ad_co
 
 ## Implemented scope
 
-The role's Administrator phase converges the SMB server baseline, Failover Clustering and File
-Services prerequisites, AWS NVMe reservation support, and cluster-service-account membership in
-local Administrators. The fleet playbook then connects to the inventory-proven singleton former
-as the cluster service account. The role’s cluster scope performs the whole cluster convergence: it
+The role's node phase converges the SMB server baseline, Failover Clustering and File Services
+prerequisites, AWS NVMe reservation support, and cluster-service-account membership in local
+Administrators under the caller-selected domain automation identity. A preceding fleet play then
+resolves the cluster service account on all four nodes and the witness and publishes their connection
+facts. The inventory-proven singleton formation play consumes those facts, and the role’s cluster
+scope performs the whole cluster convergence: it
 forms the caller-declared cluster, converges its name parameters, adopts both declared disks by EBS
 identity, creates the caller-declared file-server name as the implemented AZ role, and publishes every
 caller-declared clustered share and folder tree under the role's encryption and access policy. The
-cluster play only invokes that scope. A final controller-only play forgets the in-memory cluster
-credential.
+cluster play only invokes that scope. The final controller play clears the localhost source
+credential; host-scoped connection and role-input copies remain only in process memory until the
+immediately following playbook exit.
 
 ## How this role does complex work
 
@@ -45,11 +48,12 @@ repo wiring: [docs/reference/powershell-style-guide.md](../../../docs/reference/
 
 ## What the caller supplies
 
-For `state=present`, the playbook supplies the environment-specific leaves omitted from defaults:
+For `state=present`, the playbook supplies these environment-specific input values:
 
 | Key | Contract |
 |---|---|
 | `cluster.service_account` | Account that forms and administers the cluster nodes. |
+| `cluster.service_account_password` | Password supplied explicitly for the service account's delegation-capable batch logons. |
 | `cluster.name` | Cluster identity. |
 | `cluster.nodes` | Exact four-node list. |
 | `cluster.static_addresses` | Four distinct core cluster addresses. |
@@ -66,16 +70,19 @@ For `state=present`, the playbook supplies the environment-specific leaves omitt
 | `cluster.shares[].access` | Compact caller grants as `{ principal, rights, share }`; the role emits the complete protected NTFS and share ACLs. |
 | `cluster.shares[].folders[]` | Optional ordered relative folders with compact `{ principal, rights }` grants; `inherit` defaults to `true`. |
 
-The inventory contract supplies the four-node group, the invocation supplies the AWS region, and the
-cluster play supplies its ambient cluster-service-account connection context. `tasks/validate.yml`
-rejects a malformed merged map before any role mutation.
+The inventory contract supplies the four-node group, the invocation supplies the AWS region, and a
+preceding fleet play resolves the cluster-service-account connection on all four nodes and the witness.
+The singleton formation play consumes those published connection facts and supplies that account's
+password explicitly to the role. `tasks/validate.yml` rejects a malformed merged map before any role
+mutation.
 
 ## Configuration
 
 Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry product
-opinion only: the node execution-scope default, SMB hardening, fixed Windows resource labels,
+opinion and an empty required-input contract: the node execution-scope default, SMB hardening,
+the cluster service account password contract, fixed Windows resource labels,
 Cluster Name resource parameters, share property defaults, and protected principal grants. The
-playbook supplies every deployment-specific value through its anchored `fileserver` map and the
+playbook supplies every deployment-specific value through its anchored cluster declaration and the
 shared `ansible/playbooks/vars/fileserver-shares.yml` declaration: the
 service account; cluster, file-server, and witness identities; node and disk ownership; addresses;
 share names, paths, descriptions, folder trees; and site principals. The shared file is compact:
@@ -83,8 +90,9 @@ the role supplies SYSTEM and Administrators, `Allow`, inheritance and propagatio
 property defaults, and the default `inherit: true` before a value crosses a module boundary.
 Callers are refused if they attempt to write any of those role-owned access fields or principals.
 Validation treats the merged maps as exact policy. Runtime volume identifiers and the cluster
-credential never enter defaults; the playbook resolves the credential once, and the role's cluster
-scope resolves the Function-tagged declared volumes immediately before cluster mutation.
+credential value never enter defaults; the playbook resolves the credential once and supplies it at
+the cluster role invocation, and the role's cluster scope resolves the Function-tagged declared
+volumes immediately before cluster mutation.
 The baseline role call takes the node execution-scope default; the cluster play passes cluster,
 and tasks read only fileserver_running.execution_scope.
 

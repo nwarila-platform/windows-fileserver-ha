@@ -423,6 +423,7 @@ jobs:
         working-directory: .frameworks/ansible-framework
         env:
           ANSIBLE_CONFIG: ${{ github.workspace }}/.frameworks/ansible-framework/ansible.cfg
+          ANSIBLE_SSH_AGENT: auto
           # A secret reaches the shell through the environment, never by substitution into the
           # script text, so its value cannot be read as shell syntax. Forwarded on as an
           # extra-var below because the play requires it; same value the OIDC role ARN uses.
