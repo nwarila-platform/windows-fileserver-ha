@@ -86,7 +86,8 @@ all_systems = [
         # to exist on the interface beforehand.
         private_ip             = "10.0.1.10"
         additional_private_ips = ["10.0.1.11", "10.0.1.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -280,88 +281,6 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The two HQ domain controllers, reached through the AWS site gateway.
-          {
-            description                  = "Domain controllers DNS TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers DNS UDP"
-            ip_protocol                  = "udp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers Kerberos TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 88
-            to_port                      = 88
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers W32Time NTP"
-            ip_protocol                  = "udp"
-            from_port                    = 123
-            to_port                      = 123
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP ping"
-            ip_protocol                  = "icmp"
-            from_port                    = 8
-            to_port                      = 0
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers RPC endpoint mapper"
-            ip_protocol                  = "tcp"
-            from_port                    = 135
-            to_port                      = 135
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP UDP locator"
-            ip_protocol                  = "udp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers dynamic RPC"
-            ip_protocol                  = "tcp"
-            from_port                    = 49152
-            to_port                      = 65535
-            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -601,7 +520,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.33.10"
         additional_private_ips = ["10.0.33.11", "10.0.33.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -795,88 +715,6 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The two HQ domain controllers, reached through the AWS site gateway.
-          {
-            description                  = "Domain controllers DNS TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers DNS UDP"
-            ip_protocol                  = "udp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers Kerberos TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 88
-            to_port                      = 88
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers W32Time NTP"
-            ip_protocol                  = "udp"
-            from_port                    = 123
-            to_port                      = 123
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP ping"
-            ip_protocol                  = "icmp"
-            from_port                    = 8
-            to_port                      = 0
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers RPC endpoint mapper"
-            ip_protocol                  = "tcp"
-            from_port                    = 135
-            to_port                      = 135
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP UDP locator"
-            ip_protocol                  = "udp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers dynamic RPC"
-            ip_protocol                  = "tcp"
-            from_port                    = 49152
-            to_port                      = 65535
-            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1115,7 +953,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.65.10"
         additional_private_ips = ["10.0.65.11", "10.0.65.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -1309,88 +1148,6 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The two HQ domain controllers, reached through the AWS site gateway.
-          {
-            description                  = "Domain controllers DNS TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers DNS UDP"
-            ip_protocol                  = "udp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers Kerberos TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 88
-            to_port                      = 88
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers W32Time NTP"
-            ip_protocol                  = "udp"
-            from_port                    = 123
-            to_port                      = 123
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP ping"
-            ip_protocol                  = "icmp"
-            from_port                    = 8
-            to_port                      = 0
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers RPC endpoint mapper"
-            ip_protocol                  = "tcp"
-            from_port                    = 135
-            to_port                      = 135
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP UDP locator"
-            ip_protocol                  = "udp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers dynamic RPC"
-            ip_protocol                  = "tcp"
-            from_port                    = 49152
-            to_port                      = 65535
-            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1629,7 +1386,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.97.10"
         additional_private_ips = ["10.0.97.11", "10.0.97.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -1823,88 +1581,6 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The two HQ domain controllers, reached through the AWS site gateway.
-          {
-            description                  = "Domain controllers DNS TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers DNS UDP"
-            ip_protocol                  = "udp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers Kerberos TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 88
-            to_port                      = 88
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers W32Time NTP"
-            ip_protocol                  = "udp"
-            from_port                    = 123
-            to_port                      = 123
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP ping"
-            ip_protocol                  = "icmp"
-            from_port                    = 8
-            to_port                      = 0
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers RPC endpoint mapper"
-            ip_protocol                  = "tcp"
-            from_port                    = 135
-            to_port                      = 135
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP UDP locator"
-            ip_protocol                  = "udp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers dynamic RPC"
-            ip_protocol                  = "tcp"
-            from_port                    = 49152
-            to_port                      = 65535
-            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -2143,8 +1819,9 @@ all_systems = [
         interface_type = null
         # The witness is not a cluster member and hosts no clustered role, so it needs neither a
         # static primary nor a cluster address. SMB ingress names only the four cluster-node ENIs.
-        private_ip      = null
-        security_groups = []
+        private_ip = null
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           {
             description                  = "File share witness SMB from tcnaw-hafs01a"
@@ -2190,97 +1867,6 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The two HQ domain controllers, reached through the AWS site gateway.
-          {
-            description                  = "Domain controllers DNS TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers DNS UDP"
-            ip_protocol                  = "udp"
-            from_port                    = 53
-            to_port                      = 53
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers Kerberos TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 88
-            to_port                      = 88
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers W32Time NTP"
-            ip_protocol                  = "udp"
-            from_port                    = 123
-            to_port                      = 123
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP ping"
-            ip_protocol                  = "icmp"
-            from_port                    = 8
-            to_port                      = 0
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers RPC endpoint mapper"
-            ip_protocol                  = "tcp"
-            from_port                    = 135
-            to_port                      = 135
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP TCP"
-            ip_protocol                  = "tcp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers LDAP UDP locator"
-            ip_protocol                  = "udp"
-            from_port                    = 389
-            to_port                      = 389
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers SMB"
-            ip_protocol                  = "tcp"
-            from_port                    = 445
-            to_port                      = 445
-            cidr_ipv4                    = "10.69.112.4/31"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          {
-            description                  = "Domain controllers dynamic RPC"
-            ip_protocol                  = "tcp"
-            from_port                    = 49152
-            to_port                      = 65535
-            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           }
