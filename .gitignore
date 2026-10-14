@@ -86,7 +86,7 @@
 !/ansible/applications/fileserver/files/Set-ClusteredFolderTree.ps1.stub
 !/ansible/applications/fileserver/files/Set-ClusteredSmbShare.ps1.stub
 !/ansible/applications/fileserver/files/Set-SmbServerHardening.ps1.stub
-!/ansible/applications/fileserver/files/Set-DomainControllerReverseZone.ps1.stub
+!/ansible/applications/fileserver/files/Set-DomainControllerNamespace.ps1.stub
 !/ansible/applications/fileserver/meta/main.yml
 !/ansible/applications/fileserver/tasks/clean_windows.yml
 !/ansible/applications/fileserver/tasks/main.yml
@@ -162,8 +162,8 @@
 !/scripts/Set-ClusteredSmbShare.pester.ps1
 !/scripts/Set-SmbServerHardening.ps1
 !/scripts/Set-SmbServerHardening.pester.ps1
-!/scripts/Set-DomainControllerReverseZone.ps1
-!/scripts/Set-DomainControllerReverseZone.pester.ps1
+!/scripts/Set-DomainControllerNamespace.ps1
+!/scripts/Set-DomainControllerNamespace.pester.ps1
 !/scripts/compose-and-run.sh
 !/scripts/materialize-role-scripts.sh
 !/scripts/verify.sh

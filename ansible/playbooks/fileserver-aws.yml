@@ -146,22 +146,43 @@
     - role: 'os_bootstrap'
     #endregion --- [ Roles: OS Bootstrap ] ---------------------------------------------------- #
 
-    #region ------ [ Roles: Remote Client ] --------------------------------------------------- #
-    # This play declares no remote_client configuration: the role defaults every value it needs,
-    # the same as the golden single-server pattern. 'aws_account_id' is an extra-var -- only the
-    # pipeline knows which account it deploys into; the domain_member role below still needs it.
-    # Skipped when the product is being removed: an uninstall is not a reason to rebuild a tunnel
-    # the host is about to stop needing.
-    - role: 'remote_client'
+  #endregion --- [ Roles ] -------------------------------------------------------------------- #
+
+  #region ------ [ Tasks: Realm Name Resolution ] -------------------------------------------- #
+  # The site gateway carries domain traffic, so nothing else pins the realm's names to the domain
+  # controllers. The join resolves the realm's SRV record, so this precedes it.
+  tasks:
+    - name: 'PROCESS | Pin The Realm At The Domain Controllers'
       when: (state | default('present') | string | lower | trim) != 'absent'
-    #endregion --- [ Roles: Remote Client ] --------------------------------------------------- #
+      ansible.windows.win_powershell:
+        error_action: 'stop'
+        parameters:
+          Namespace: ".{{ domain_realm }}"
+          NameServers: ['10.69.112.4', '10.69.112.5']
+          Comment: 'Managed by windows-fileserver-ha (realm forward zone)'
+        script: >-
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-DomainControllerNamespace.ps1') }}
+
+    # The realm rule's owner also owns this machine-wide setting: without it Windows will not register through NRPT-supplied servers.
+    - name: 'PROCESS | Permit Registration Through The Realm Rule'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+      ansible.windows.win_regedit:
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
+        name: 'DisableNRPTForAdapterRegistration'
+        data: 0
+        type: 'dword'
+        state: 'present'
+        delete_key: false
+  #endregion --- [ Tasks: Realm Name Resolution ] -------------------------------------------- #
 
     #region ------ [ Roles: Domain Member ] --------------------------------------------------- #
     # Three things are this environment's: the realm and join account, the OU a file server is filed
     # under, and which address the host publishes in DNS. The VPC address, because the host is
     # multi-homed and its security groups permit cluster traffic only over the VPC path.
-    - role: 'domain_member'
+    - name: 'PROCESS | Join The Realm'
       when: (state | default('present') | string | lower | trim) != 'absent'
+      ansible.builtin.import_role:
+        name: 'domain_member'
       vars:
         domain_member: "{{ domain_membership }}"  # noqa: var-naming[no-role-prefix]
     #endregion --- [ Roles: Domain Member ] --------------------------------------------------- #
@@ -172,8 +193,10 @@
     # without racing an initialize, partition, or format operation.
     #
     # D: is the contract this play publishes to the cluster work that follows in later regions.
-    - role: 'windows_disk_manager'
+    - name: 'PROCESS | Prepare The Shared Volume'
       when: inventory_hostname in fileserver_shared_volume_by_preparer
+      ansible.builtin.import_role:
+        name: 'windows_disk_manager'
       vars:
         windows_disk_manager:  # noqa: var-naming[no-role-prefix]
           platform: 'aws'
@@ -183,8 +206,6 @@
               label: 'FILEDATA'
               allocation_unit: 65536
     #endregion --- [ Roles: Windows Disk Manager ] -------------------------------------------- #
-
-  #endregion --- [ Roles ] -------------------------------------------------------------------- #
 
   #region ------ [ Post Tasks ] --------------------------------------------------------------- #
   # New-Cluster's RPC/Kerberos bind to the named domain controller triggers a reverse-PTR lookup
@@ -202,7 +223,7 @@
           NameServers: ['10.69.112.4', '10.69.112.5']
           Comment: 'Managed by windows-fileserver-ha (cluster DC reverse zone)'
         script: >-
-          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-DomainControllerReverseZone.ps1') }}
+          {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-DomainControllerNamespace.ps1') }}
   #endregion --- [ Post Tasks ] --------------------------------------------------------------- #
 
 #endregion --- [ Play: Configure The Guest ] -------------------------------------------------- #

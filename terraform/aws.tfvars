@@ -283,14 +283,85 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
+          # The two HQ domain controllers, reached through the AWS site gateway.
           {
-            description                  = "OpenVPN tunnel out"
+            description                  = "Domain controllers DNS TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers DNS UDP"
             ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
-            cidr_ipv4                    = "0.0.0.0/0"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers Kerberos TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 88
+            to_port                      = 88
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers W32Time NTP"
+            ip_protocol                  = "udp"
+            from_port                    = 123
+            to_port                      = 123
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP ping"
+            ip_protocol                  = "icmp"
+            from_port                    = 8
+            to_port                      = 0
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers RPC endpoint mapper"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP UDP locator"
+            ip_protocol                  = "udp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers dynamic RPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -727,14 +798,85 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
+          # The two HQ domain controllers, reached through the AWS site gateway.
           {
-            description                  = "OpenVPN tunnel out"
+            description                  = "Domain controllers DNS TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers DNS UDP"
             ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
-            cidr_ipv4                    = "0.0.0.0/0"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers Kerberos TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 88
+            to_port                      = 88
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers W32Time NTP"
+            ip_protocol                  = "udp"
+            from_port                    = 123
+            to_port                      = 123
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP ping"
+            ip_protocol                  = "icmp"
+            from_port                    = 8
+            to_port                      = 0
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers RPC endpoint mapper"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP UDP locator"
+            ip_protocol                  = "udp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers dynamic RPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1170,14 +1312,85 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
+          # The two HQ domain controllers, reached through the AWS site gateway.
           {
-            description                  = "OpenVPN tunnel out"
+            description                  = "Domain controllers DNS TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers DNS UDP"
             ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
-            cidr_ipv4                    = "0.0.0.0/0"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers Kerberos TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 88
+            to_port                      = 88
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers W32Time NTP"
+            ip_protocol                  = "udp"
+            from_port                    = 123
+            to_port                      = 123
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP ping"
+            ip_protocol                  = "icmp"
+            from_port                    = 8
+            to_port                      = 0
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers RPC endpoint mapper"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP UDP locator"
+            ip_protocol                  = "udp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers dynamic RPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1613,14 +1826,85 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
+          # The two HQ domain controllers, reached through the AWS site gateway.
           {
-            description                  = "OpenVPN tunnel out"
+            description                  = "Domain controllers DNS TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers DNS UDP"
             ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
-            cidr_ipv4                    = "0.0.0.0/0"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers Kerberos TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 88
+            to_port                      = 88
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers W32Time NTP"
+            ip_protocol                  = "udp"
+            from_port                    = 123
+            to_port                      = 123
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP ping"
+            ip_protocol                  = "icmp"
+            from_port                    = 8
+            to_port                      = 0
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers RPC endpoint mapper"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP UDP locator"
+            ip_protocol                  = "udp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers dynamic RPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           },
@@ -1909,14 +2193,94 @@ all_systems = [
             prefix_list_id               = null
             referenced_security_group_id = null
           },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
+          # The two HQ domain controllers, reached through the AWS site gateway.
           {
-            description                  = "OpenVPN tunnel out"
+            description                  = "Domain controllers DNS TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers DNS UDP"
             ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
-            cidr_ipv4                    = "0.0.0.0/0"
+            from_port                    = 53
+            to_port                      = 53
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers Kerberos TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 88
+            to_port                      = 88
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers W32Time NTP"
+            ip_protocol                  = "udp"
+            from_port                    = 123
+            to_port                      = 123
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP ping"
+            ip_protocol                  = "icmp"
+            from_port                    = 8
+            to_port                      = 0
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers RPC endpoint mapper"
+            ip_protocol                  = "tcp"
+            from_port                    = 135
+            to_port                      = 135
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP TCP"
+            ip_protocol                  = "tcp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers LDAP UDP locator"
+            ip_protocol                  = "udp"
+            from_port                    = 389
+            to_port                      = 389
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers SMB"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.69.112.4/31"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          {
+            description                  = "Domain controllers dynamic RPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 49152
+            to_port                      = 65535
+            cidr_ipv4                    = "10.69.112.4/31"
             prefix_list_id               = null
             referenced_security_group_id = null
           }

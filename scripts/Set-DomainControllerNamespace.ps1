@@ -4,7 +4,7 @@
 
 <#
     .SYNOPSIS
-        Converges the declared domain-controller reverse-zone NRPT rule.
+        Converges one declared domain-controller NRPT rule.
     .DESCRIPTION
         Treats Comment as the exact ownership marker, refuses a foreign rule for the same
         namespace before mutation, establishes a replacement before removing stale owned
@@ -16,9 +16,9 @@
     .PARAMETER LogLevel
         Six-digit stream preference control. Default '002223'.
     .PARAMETER NameServers
-        Ordered name-server addresses for the reverse zone.
+        Ordered name-server addresses for the namespace.
     .PARAMETER Namespace
-        Reverse-zone namespace to pin.
+        DNS namespace to pin to the domain controllers.
     .OUTPUTS
         System.String
 #>
@@ -174,9 +174,9 @@ $Result = [PSCustomObject]@{
   changed      = [System.Boolean]$Changed
   check_mode   = [System.Boolean]$Ansible.CheckMode
   msg          = $(If ($Changed) {
-      If ($Ansible.CheckMode) { 'The domain-controller reverse-zone rule would be converged.' }
-      Else { 'The domain-controller reverse-zone rule was converged and verified.' }
-    } Else { 'The domain-controller reverse-zone rule is unchanged and verified.' })
+      If ($Ansible.CheckMode) { 'The domain-controller namespace rule would be converged.' }
+      Else { 'The domain-controller namespace rule was converged and verified.' }
+    } Else { 'The domain-controller namespace rule is unchanged and verified.' })
   name_servers = [System.String[]]$NameServers
   namespace    = [System.String]$Namespace
 }

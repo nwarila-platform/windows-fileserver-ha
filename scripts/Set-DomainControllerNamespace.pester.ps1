@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 BeforeAll {
-  $script:ScriptPath = Join-Path -Path $PSScriptRoot -ChildPath 'Set-DomainControllerReverseZone.ps1'
+  $script:ScriptPath = Join-Path -Path $PSScriptRoot -ChildPath 'Set-DomainControllerNamespace.ps1'
   $script:Namespace = '.112.69.10.in-addr.arpa'
   $script:Servers = @('10.69.112.4', '10.69.112.5')
   $script:Comment = 'Managed reverse zone'
@@ -102,7 +102,7 @@ AfterAll {
   Remove-Variable -Name 'FsHaNrptRules', 'FsHaNrptReads', 'FsHaNrptOperations', 'FsHaNrptAddFailure', 'FsHaNrptIgnoreAdd', 'FsHaNrptIgnoreSet', 'FsHaNrptNextName' -Scope 'Global' -Force -ErrorAction 'SilentlyContinue'
 }
 
-Describe 'Set-DomainControllerReverseZone' {
+Describe 'Set-DomainControllerNamespace' {
   BeforeEach {
     $global:FsHaNrptRules = @()
     $global:FsHaNrptReads = 0
