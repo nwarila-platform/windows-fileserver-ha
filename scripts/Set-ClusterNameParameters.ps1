@@ -4,10 +4,10 @@
 
 <#
     .SYNOPSIS
-        Converges the two declared Cluster Name resource parameters.
+        Converges the two declared parameters on one Network Name resource.
     .DESCRIPTION
         Reads, diffs, mutates only drift, reacquires, and verifies the exact
-        DNS registration parameters owned by the Cluster Name resource.
+        DNS registration parameters owned by one Network Name resource.
     .PARAMETER DebugLevel
         Three-digit debug preference control. Default '103'.
     .PARAMETER LogLevel
@@ -15,7 +15,9 @@
     .PARAMETER ClusterName
         Name of the failover cluster.
     .PARAMETER ResourceName
-        Exact Cluster Name resource name.
+        Exact Network Name resource name.
+    .PARAMETER OwnerGroup
+        Exact owner group of the Network Name resource.
     .PARAMETER RegisterAllProvidersIP
         Desired RegisterAllProvidersIP integer.
     .PARAMETER HostRecordTTL
@@ -50,6 +52,10 @@ Param (
   [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [System.String]
   $ResourceName,
+
+  [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
+  [System.String]
+  $OwnerGroup,
 
   [Parameter(DontShow = $False, Mandatory = $True, ParameterSetName = 'default', ValueFromPipeline = $False, ValueFromPipelineByPropertyName = $False)]
   [System.Int32]
@@ -117,6 +123,7 @@ $GetNameResourceState = {
   [CmdletBinding()]
   Param (
     [Parameter(Mandatory = $True)] [System.String] $Name,
+    [Parameter(Mandatory = $True)] [System.String] $Group,
     [Parameter(Mandatory = $True)] [System.Object] $Cluster
   )
 
@@ -125,8 +132,13 @@ $GetNameResourceState = {
     Throw ('Cluster {0} must expose exactly one resource named {1}; found {2}.' -f $Cluster.Name, $Name, $Resources.Count)
   }
   $Resource = $Resources[0]
-  If ([System.String]$Resource.ResourceType -ne 'Network Name' -or [System.String]$Resource.OwnerGroup -ne 'Cluster Group') {
-    Throw ('Resource {0} must be a Network Name owned by Cluster Group.' -f $Name)
+  If ([System.String]$Resource.ResourceType -ne 'Network Name' -or [System.String]$Resource.OwnerGroup -ine $Group) {
+    Throw ('Resource {0} must be a Network Name owned by {1}.' -f $Name, $Group)
+  }
+
+  $Groups = @(Get-ClusterGroup -Name $Group)
+  If ($Groups.Count -ne 1) {
+    Throw ('Cluster {0} must expose exactly one group named {1}; found {2}.' -f $Cluster.Name, $Group, $Groups.Count)
   }
 
   $Register = @(Get-ClusterParameter -InputObject $Resource -Name 'RegisterAllProvidersIP')
@@ -138,11 +150,12 @@ $GetNameResourceState = {
   $TtlValue = 0
   If (-not [System.Int32]::TryParse([System.String]$Register[0].Value, [ref]$RegisterValue) -or
     -not [System.Int32]::TryParse([System.String]$Ttl[0].Value, [ref]$TtlValue)) {
-    Throw ('Resource {0} returned a non-integral cluster name parameter.' -f $Name)
+    Throw ('Resource {0} returned a non-integral Network Name parameter.' -f $Name)
   }
 
   [PSCustomObject]@{
     resource                  = $Resource
+    group                     = $Groups[0]
     register_all_providers_ip = $RegisterValue
     host_record_ttl           = $TtlValue
   }
@@ -156,7 +169,7 @@ If ([System.String]$Cluster.Name -ine $ClusterName) {
   Throw ('The local node belongs to cluster {0}, not {1}.' -f $Cluster.Name, $ClusterName)
 }
 
-$Before = & $GetNameResourceState -Name $ResourceName -Cluster $Cluster
+$Before = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
 $Actions = [System.Collections.Generic.List[System.String]]::new()
 If ($Before.register_all_providers_ip -ne $RegisterAllProvidersIP) {
   $Actions.Add('set_register_all_providers_ip')
@@ -164,22 +177,88 @@ If ($Before.register_all_providers_ip -ne $RegisterAllProvidersIP) {
 If ($Before.host_record_ttl -ne $HostRecordTTL) {
   $Actions.Add('set_host_record_ttl')
 }
+If ($Actions.Count -gt 0) {
+  $Actions.Add('restart_network_name_resource')
+}
 
 If ($Actions.Count -eq 0) {
   $After = $Before
 } ElseIf ($Ansible.CheckMode) {
   $After = $Before
 } Else {
-  If ($Actions.Contains('set_register_all_providers_ip')) {
-    $Null = $Before.resource | Set-ClusterParameter -Name 'RegisterAllProvidersIP' -Value $RegisterAllProvidersIP
-  }
-  If ($Actions.Contains('set_host_record_ttl')) {
-    $Null = $Before.resource | Set-ClusterParameter -Name 'HostRecordTTL' -Value $HostRecordTTL
-  }
-  $After = & $GetNameResourceState -Name $ResourceName -Cluster $Cluster
-  If ($After.register_all_providers_ip -ne $RegisterAllProvidersIP -or
-    $After.host_record_ttl -ne $HostRecordTTL) {
-    Throw ('Cluster Name parameter readback failed for resource {0}.' -f $ResourceName)
+  $FailureStage = [System.String]::Empty
+  Try {
+    If ($Actions.Contains('set_register_all_providers_ip')) {
+      $FailureStage = 'write RegisterAllProvidersIP'
+      $Null = Set-ClusterParameter -InputObject $Before.resource -Name 'RegisterAllProvidersIP' -Value $RegisterAllProvidersIP
+    }
+    If ($Actions.Contains('set_host_record_ttl')) {
+      $FailureStage = 'write HostRecordTTL'
+      $Null = Set-ClusterParameter -InputObject $Before.resource -Name 'HostRecordTTL' -Value $HostRecordTTL
+    }
+
+    $FailureStage = 'apply'
+    If ([System.String]$Before.resource.State -ine 'Offline') {
+      $Null = Stop-ClusterResource -InputObject $Before.resource -Wait 300
+    }
+    $Null = Start-ClusterGroup -Name $OwnerGroup -Wait 600
+
+    $FailureStage = 'readback'
+    $After = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
+    If ($After.resource.State -ne 'Online' -or $After.group.State -ne 'Online' -or
+      $After.register_all_providers_ip -ne $RegisterAllProvidersIP -or
+      $After.host_record_ttl -ne $HostRecordTTL) {
+      Throw ('Network Name parameter readback failed for resource {0}.' -f $ResourceName)
+    }
+  } Catch {
+    $ConvergenceCause = [System.String]$PSItem.Exception.GetBaseException().Message
+    $RollbackResult = [System.String]::Empty
+    $AvailabilityRecoveryResult = [System.String]::Empty
+    Try {
+      $Rollback = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
+      If ($Rollback.register_all_providers_ip -ne $Before.register_all_providers_ip) {
+        $Null = Set-ClusterParameter -InputObject $Rollback.resource -Name 'RegisterAllProvidersIP' -Value $Before.register_all_providers_ip
+      }
+      If ($Rollback.host_record_ttl -ne $Before.host_record_ttl) {
+        $Null = Set-ClusterParameter -InputObject $Rollback.resource -Name 'HostRecordTTL' -Value $Before.host_record_ttl
+      }
+      $Rollback = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
+      If ($Rollback.register_all_providers_ip -ne $Before.register_all_providers_ip -or
+        $Rollback.host_record_ttl -ne $Before.host_record_ttl) {
+        Throw ('Network Name parameter rollback readback failed for resource {0}.' -f $ResourceName)
+      }
+      If ([System.String]$Rollback.resource.State -ine 'Offline') {
+        $Null = Stop-ClusterResource -InputObject $Rollback.resource -Wait 300
+      }
+      $Null = Start-ClusterGroup -Name $OwnerGroup -Wait 600
+      $Rollback = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
+      If ($Rollback.register_all_providers_ip -ne $Before.register_all_providers_ip -or
+        $Rollback.host_record_ttl -ne $Before.host_record_ttl -or
+        $Rollback.resource.State -ne 'Online' -or $Rollback.group.State -ne 'Online') {
+        Throw ('Network Name rollback state readback failed for resource {0}.' -f $ResourceName)
+      }
+      $RollbackResult = 'succeeded'
+      $AvailabilityRecoveryResult = 'succeeded'
+    } Catch {
+      $RollbackResult = 'failed: {0}' -f [System.String]$PSItem.Exception.GetBaseException().Message
+      Try {
+        $Null = Start-ClusterGroup -Name $OwnerGroup -Wait 600
+        $Recovery = & $GetNameResourceState -Name $ResourceName -Group $OwnerGroup -Cluster $Cluster
+        If ($Recovery.resource.State -ne 'Online' -or $Recovery.group.State -ne 'Online') {
+          Throw ('Network Name availability recovery readback failed for resource {0}.' -f $ResourceName)
+        }
+        $AvailabilityRecoveryResult = 'succeeded'
+      } Catch {
+        $AvailabilityRecoveryResult = 'failed: {0}' -f [System.String]$PSItem.Exception.GetBaseException().Message
+      }
+    }
+    Throw ('Network Name convergence failed for resource {0} during {1}: {2}; rollback: {3}; availability recovery: {4}' -f @(
+        $ResourceName
+        $FailureStage
+        $ConvergenceCause
+        $RollbackResult
+        $AvailabilityRecoveryResult
+      ))
   }
 }
 
@@ -196,7 +275,7 @@ $Result = [PSCustomObject]@{
     register_all_providers_ip = [System.Int32]$After.register_all_providers_ip
     host_record_ttl           = [System.Int32]$After.host_record_ttl
   }
-  msg        = $(If ($Actions.Count -eq 0) { 'Cluster Name parameters already match.' } ElseIf ($Ansible.CheckMode) { 'Check mode: Cluster Name parameters would be converged.' } Else { 'Cluster Name parameters converged.' })
+  msg        = $(If ($Actions.Count -eq 0) { 'Network Name parameters already match.' } ElseIf ($Ansible.CheckMode) { 'Check mode: Network Name parameters would be converged.' } Else { 'Network Name parameters converged.' })
 }
 #endregion --- [ Main ] ---------------------------------------------------------------------- #
 
