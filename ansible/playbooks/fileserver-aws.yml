@@ -148,10 +148,11 @@
 
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
 
-  #region ------ [ Tasks: Realm Name Resolution ] -------------------------------------------- #
-  # The site gateway carries domain traffic, so nothing else pins the realm's names to the domain
-  # controllers. The join resolves the realm's SRV record, so this precedes it.
+  #region ------ [ Tasks ] -------------------------------------------------------------------- #
   tasks:
+    #region ------ [ Tasks: Realm Name Resolution ] ------------------------------------------- #
+    # The site gateway carries domain traffic, so nothing else pins the realm's names to the
+    # domain controllers. The join resolves the realm's SRV record, so this precedes it.
     - name: 'PROCESS | Pin The Realm At The Domain Controllers'
       when: (state | default('present') | string | lower | trim) != 'absent'
       ansible.windows.win_powershell:
@@ -163,31 +164,32 @@
         script: >-
           {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-DomainControllerNamespace.ps1') }}
 
-    # The realm rule's owner also owns this machine-wide setting: without it Windows will not register through NRPT-supplied servers.
+    # The realm rule's owner also owns this machine-wide setting: without it Windows will not
+    # register through NRPT-supplied servers.
     - name: 'PROCESS | Permit Registration Through The Realm Rule'
       when: (state | default('present') | string | lower | trim) != 'absent'
       ansible.windows.win_regedit:
-        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
-        name: 'DisableNRPTForAdapterRegistration'
         data: 0
-        type: 'dword'
-        state: 'present'
         delete_key: false
-  #endregion --- [ Tasks: Realm Name Resolution ] -------------------------------------------- #
+        name: 'DisableNRPTForAdapterRegistration'
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters'
+        state: 'present'
+        type: 'dword'
+    #endregion --- [ Tasks: Realm Name Resolution ] ------------------------------------------- #
 
-    #region ------ [ Roles: Domain Member ] --------------------------------------------------- #
-    # Three things are this environment's: the realm and join account, the OU a file server is filed
-    # under, and which address the host publishes in DNS. The VPC address, because the host is
-    # multi-homed and its security groups permit cluster traffic only over the VPC path.
+    #region ------ [ Tasks: Domain Member ] --------------------------------------------------- #
+    # Three things are this environment's: the realm and join account, the OU a file server is
+    # filed under, and which address the host publishes in DNS. The VPC address, because on the
+    # nodes the same interface also carries the cluster and file-server addresses.
     - name: 'PROCESS | Join The Realm'
       when: (state | default('present') | string | lower | trim) != 'absent'
       ansible.builtin.import_role:
         name: 'domain_member'
       vars:
         domain_member: "{{ domain_membership }}"  # noqa: var-naming[no-role-prefix]
-    #endregion --- [ Roles: Domain Member ] --------------------------------------------------- #
+    #endregion --- [ Tasks: Domain Member ] --------------------------------------------------- #
 
-    #region ------ [ Roles: Windows Disk Manager ] -------------------------------------------- #
+    #region ------ [ Tasks: Windows Disk Manager ] -------------------------------------------- #
     # Each Function value names one EBS Multi-Attach volume from terraform/aws.tfvars. The first
     # host in each AZ is its designated preparer. Its partner observes the same attached volume
     # without racing an initialize, partition, or format operation.
@@ -205,7 +207,9 @@
               drive_letter: 'D'
               label: 'FILEDATA'
               allocation_unit: 65536
-    #endregion --- [ Roles: Windows Disk Manager ] -------------------------------------------- #
+    #endregion --- [ Tasks: Windows Disk Manager ] -------------------------------------------- #
+
+  #endregion --- [ Tasks ] -------------------------------------------------------------------- #
 
   #region ------ [ Post Tasks ] --------------------------------------------------------------- #
   # New-Cluster's RPC/Kerberos bind to the named domain controller triggers a reverse-PTR lookup
