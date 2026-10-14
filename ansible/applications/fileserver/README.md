@@ -29,6 +29,7 @@ spec, under `scripts/`:
 |---|---|---|
 | `files/Get-ClusteredFileServerOwner.ps1.stub` | `scripts/Get-ClusteredFileServerOwner.ps1` + `.pester.ps1` | Exact Online clustered file-server role owner for node-local delegation |
 | `files/Set-DomainControllerNamespace.ps1.stub` | `scripts/Set-DomainControllerNamespace.ps1` + `.pester.ps1` | Exact domain-controller NRPT rule (realm forward zone and DC reverse zone) with failure-honest readback |
+| `files/Set-PrestagedClusterNameObject.ps1.stub` | `scripts/Set-PrestagedClusterNameObject.ps1` + `.pester.ps1` | Prestaged cluster name object release with explicit directory binding and two-controller readback |
 | `files/Set-SmbServerHardening.ps1.stub` | `scripts/Set-SmbServerHardening.ps1` + `.pester.ps1` | SMB server configuration against the declared baseline (`fileserver.smb.settings`) |
 | `files/Set-FileServerCluster.ps1.stub` | `scripts/Set-FileServerCluster.ps1` + `.pester.ps1` | Exact caller-declared cluster membership and static addresses |
 | `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Cluster Name DNS registration parameters |

@@ -87,6 +87,7 @@
 !/ansible/applications/fileserver/files/Set-ClusteredSmbShare.ps1.stub
 !/ansible/applications/fileserver/files/Set-SmbServerHardening.ps1.stub
 !/ansible/applications/fileserver/files/Set-DomainControllerNamespace.ps1.stub
+!/ansible/applications/fileserver/files/Set-PrestagedClusterNameObject.ps1.stub
 !/ansible/applications/fileserver/meta/main.yml
 !/ansible/applications/fileserver/tasks/clean_windows.yml
 !/ansible/applications/fileserver/tasks/main.yml
@@ -146,6 +147,8 @@
 !/scripts/Set-ClusterFileShareWitnessQuorum.ps1
 !/scripts/Set-FileServerCluster.ps1
 !/scripts/Set-FileServerCluster.pester.ps1
+!/scripts/Set-PrestagedClusterNameObject.ps1
+!/scripts/Set-PrestagedClusterNameObject.pester.ps1
 !/scripts/Set-FileShareAccessGroup.ps1
 !/scripts/Set-FileShareAccessGroup.pester.ps1
 !/scripts/Get-ClusteredFileServerOwner.ps1
