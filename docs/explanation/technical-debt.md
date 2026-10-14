@@ -40,7 +40,7 @@ reproducible.
 formation for cancelled runs, gated on an explicit `fresh_deployment` declaration so a live
 cluster's identity cannot be disabled. This needs no new directory rights, domain controller in the
 CI inventory, or RSAT AD tooling: every node has `System.DirectoryServices` and LDAP reachability
-over the tunnel.
+through the AWS site gateway.
 
 ## TD-005 — Managed-host identity is not authenticated before contact
 

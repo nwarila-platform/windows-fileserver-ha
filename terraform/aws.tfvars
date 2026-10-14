@@ -86,7 +86,8 @@ all_systems = [
         # to exist on the interface beforehand.
         private_ip             = "10.0.1.10"
         additional_private_ips = ["10.0.1.11", "10.0.1.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -279,17 +280,6 @@ all_systems = [
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
-            cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
-          {
-            description                  = "OpenVPN tunnel out"
-            ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -530,7 +520,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.33.10"
         additional_private_ips = ["10.0.33.11", "10.0.33.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -723,17 +714,6 @@ all_systems = [
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
-            cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
-          {
-            description                  = "OpenVPN tunnel out"
-            ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -973,7 +953,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.65.10"
         additional_private_ips = ["10.0.65.11", "10.0.65.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -1166,17 +1147,6 @@ all_systems = [
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
-            cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
-          {
-            description                  = "OpenVPN tunnel out"
-            ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1416,7 +1386,8 @@ all_systems = [
         interface_type         = null
         private_ip             = "10.0.97.10"
         additional_private_ips = ["10.0.97.11", "10.0.97.12"]
-        security_groups        = []
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           # Inbound cluster traffic is limited to the three peer hosts and WSFC's required ports.
           {
@@ -1609,17 +1580,6 @@ all_systems = [
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
-            cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
-          {
-            description                  = "OpenVPN tunnel out"
-            ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
@@ -1859,8 +1819,9 @@ all_systems = [
         interface_type = null
         # The witness is not a cluster member and hosts no clustered role, so it needs neither a
         # static primary nor a cluster address. SMB ingress names only the four cluster-node ENIs.
-        private_ip      = null
-        security_groups = []
+        private_ip = null
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
         ingress = [
           {
             description                  = "File share witness SMB from tcnaw-hafs01a"
@@ -1905,17 +1866,6 @@ all_systems = [
             ip_protocol                  = "tcp"
             from_port                    = 443
             to_port                      = 443
-            cidr_ipv4                    = "0.0.0.0/0"
-            prefix_list_id               = null
-            referenced_security_group_id = null
-          },
-          # The VPN tunnel that carries the host onto the private network. Scoped by port rather
-          # than by address: the profile names its endpoint by DNS, and that address changes.
-          {
-            description                  = "OpenVPN tunnel out"
-            ip_protocol                  = "udp"
-            from_port                    = 1194
-            to_port                      = 1194
             cidr_ipv4                    = "0.0.0.0/0"
             prefix_list_id               = null
             referenced_security_group_id = null
