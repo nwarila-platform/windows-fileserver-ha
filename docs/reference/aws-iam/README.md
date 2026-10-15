@@ -41,7 +41,7 @@ The deploy workflow assumes the runner role through DEPLOY_ROLE; the reaper work
 | `nwarila-platform_windows-fileserver-ha_runner_ec2.json` | Read deployment metadata; launch tagged instances and volumes; manage and tag owned instances and volumes |
 | `nwarila-platform_windows-fileserver-ha_runner_ssm.json` | Read the AMI parameter hierarchy; start SSH sessions and PowerShell commands on repository-tagged instances; read results and tear down the runner's sessions |
 | `nwarila-platform_windows-fileserver-ha_runner_kms.json` | Resolve KMS aliases and keys; use KMS cryptographic and grant operations through EC2 in `us-east-1` |
-| `nwarila-platform_windows-fileserver-ha_runner_s3.json` | Manage the two Terraform state objects and list only those two keys; read the OpenVPN and directory-join artifacts |
+| `nwarila-platform_windows-fileserver-ha_runner_s3.json` | Manage the two Terraform state objects and list only those two keys; read the domain-member credentials and the cluster manager secret |
 | `nwarila-platform_windows-fileserver-ha_runner_ebs.json` | Describe volumes; create tagged volumes; attach, detach and delete owned volumes |
 | `nwarila-platform_windows-fileserver-ha_reaper_ebs.json` | Describe volumes and volume attributes; detach owned volumes from owned instances; delete owned volumes |
 | `nwarila-platform_windows-fileserver-ha_reaper_ec2.json` | Read destroy-refresh EC2 metadata; stop and terminate owned instances |
@@ -64,7 +64,8 @@ The deploy workflow assumes the runner role through DEPLOY_ROLE; the reaper work
 - The runner can pass only `nwarila-ec2-role` to EC2. KMS use is conditioned on the EC2 service in
   `us-east-1`.
 - S3 access can manage the two Terraform state objects and list their exact keys; additional
-  read-only access is limited to the OpenVPN and directory-join artifact paths in this account.
+  read-only access is limited to the domain-member credential and cluster manager secret paths
+  in this account.
 
 The instance profile carries `AmazonSSMManagedInstanceCore` only and has no S3 policy.
 
@@ -92,4 +93,3 @@ and [permission-set inline policies](https://docs.aws.amazon.com/singlesignon/la
 - IAM does not prevent a public IPv4 at launch. The runner has no Elastic IP, internet-gateway or
   route-table actions.
 - KMS cryptographic access uses `Resource: "*"`, bounded by `kms:ViaService` for EC2 in `us-east-1`.
-- The OpenVPN installer grant names the one exact key rendered by the pinned framework; the VPN-profile grant names only the profile selected by that framework revision.
