@@ -46,12 +46,15 @@
 !/docs/reference/aws-iam/
 !/docs/reference/aws-iam/policies/
 !/docs/reference/aws-iam/roles/
+!/docs/reference/ports-protocols/
+!/docs/reference/ports-protocols/templates/
 !/scripts/
 !/terraform/
 
 # --- [ allowed: repository configuration ] -------------------------------------------------- #
 !/.editorconfig
 !/.gitignore
+!/.gitlab-ci.yml
 !/.yamllint.yml
 
 # --- [ allowed: top-level documents ] ------------------------------------------------------- #
@@ -67,6 +70,7 @@
 !/.github/workflows/aws-deploy.yml
 !/.github/workflows/aws-reaper.yml
 !/.github/workflows/codeql.yml
+!/.github/workflows/ports-protocols.yml
 !/.github/workflows/powershell.yml
 !/.github/workflows/quality.yml
 !/.github/renovate.json5
@@ -134,6 +138,18 @@
 !/docs/reference/aws-iam/roles/github_nwarila-platform_windows-fileserver-ha.trust.json
 !/docs/reference/aws-iam/roles/nwarila-ec2-role.trust.json
 !/docs/reference/powershell-style-guide.md
+!/docs/reference/ports-protocols/README.md
+!/docs/reference/ports-protocols/build.py
+!/docs/reference/ports-protocols/diagram.svg
+!/docs/reference/ports-protocols/register.json
+!/docs/reference/ports-protocols/requirements.txt
+!/docs/reference/ports-protocols/site-gateway.json
+!/docs/reference/ports-protocols/topology.json
+!/docs/reference/ports-protocols/templates/README.md.j2
+!/docs/reference/ports-protocols/templates/diagram.css
+!/docs/reference/ports-protocols/templates/diagram.svg.j2
+!/docs/reference/ports-protocols/templates/page.html.j2
+!/docs/reference/ports-protocols/templates/tokens.css
 
 # --- [ allowed: scripts ] ------------------------------------------------------------------- #
 # The generic script home: PowerShell pairs (one script + one spec — new scripts add both

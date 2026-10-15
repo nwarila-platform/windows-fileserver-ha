@@ -1,0 +1,751 @@
+{
+  "boundaries": [
+    {
+      "title": "Internet → VPC",
+      "text": "Only the run's GitHub runner and the operator, each as a single /32 created for that run, on SSH, RDP (operator only), WinRM-HTTPS and ICMP. The site gateway accepts the WireGuard tunnel on UDP 51820."
+    },
+    {
+      "title": "VPC → Internet",
+      "text": "The file server hosts reach the Internet on HTTPS (TCP 443) only. HTTP and public NTP are not permitted for them; the hosts try both, and those attempts are dropped."
+    },
+    {
+      "title": "VPC ↔ HQ",
+      "text": "Only through the WireGuard tunnel, which either end may open on UDP 51820. Hosts reach the two domain controllers on the domain member set; HQ clients reach the file server on TCP 445."
+    }
+  ],
+  "flows": [
+    {
+      "id": "1",
+      "category": "mgmt",
+      "title": "Management from the CI runner",
+      "scope": "Internet → VPC · run-scoped ingress group",
+      "rows": [
+        {
+          "ref": "1.1",
+          "service": "SSH (Ansible over OpenSSH)",
+          "source": "GitHub runner /32",
+          "destination": "All 5 hosts",
+          "protection": "SSH",
+          "note": "The deploy path.",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "tcp",
+              "port": "22"
+            }
+          ]
+        },
+        {
+          "ref": "1.2",
+          "service": "WinRM over HTTPS",
+          "source": "GitHub runner /32",
+          "destination": "All 5 hosts",
+          "protection": "TLS",
+          "note": "No listener on the hosts; connections are refused.",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "tcp",
+              "port": "5986"
+            }
+          ]
+        },
+        {
+          "ref": "1.3",
+          "service": "Reachability check",
+          "source": "GitHub runner /32",
+          "destination": "All 5 hosts",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "icmp",
+              "port": "all"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "category": "mgmt",
+      "title": "Management from the operator",
+      "scope": "Internet → VPC · only when an operator hostname is configured",
+      "rows": [
+        {
+          "ref": "2.1",
+          "service": "SSH",
+          "source": "Operator /32",
+          "destination": "All 5 hosts",
+          "protection": "SSH",
+          "note": "As the domain automation account; local Administrator is denied by the STIG.",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "tcp",
+              "port": "22"
+            }
+          ]
+        },
+        {
+          "ref": "2.2",
+          "service": "RDP",
+          "source": "Operator /32",
+          "destination": "All 5 hosts",
+          "protection": "TLS",
+          "note": "",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "tcp",
+              "port": "3389"
+            }
+          ]
+        },
+        {
+          "ref": "2.3",
+          "service": "WinRM over HTTPS",
+          "source": "Operator /32",
+          "destination": "All 5 hosts",
+          "protection": "TLS",
+          "note": "No listener on the hosts.",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "tcp",
+              "port": "5986"
+            }
+          ]
+        },
+        {
+          "ref": "2.4",
+          "service": "Reachability check",
+          "source": "Operator /32",
+          "destination": "All 5 hosts",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "framework",
+              "proto": "icmp",
+              "port": "all"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "category": "egress",
+      "title": "Internet egress",
+      "scope": "VPC → Internet · per-host groups",
+      "rows": [
+        {
+          "ref": "3.1",
+          "service": "HTTPS",
+          "source": "All 5 hosts",
+          "destination": "0.0.0.0/0",
+          "protection": "TLS",
+          "note": "Defender updates, SSM agent, Defender core service.",
+          "binding": [
+            {
+              "kind": "host",
+              "direction": "egress",
+              "description": "HTTPS out",
+              "cidr": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "ref": "3.2",
+          "service": "HTTP (certificate revocation, trust list downloads)",
+          "source": "All 5 hosts",
+          "destination": "Public CDN addresses",
+          "protection": "—",
+          "note": "Cryptographic Services retries; dropped by Windows and by the security group.",
+          "binding": [
+            {
+              "kind": "not-permitted",
+              "proto": "tcp",
+              "port": "80"
+            }
+          ]
+        },
+        {
+          "ref": "3.3",
+          "service": "NTP to time.windows.com",
+          "source": "All 5 hosts",
+          "destination": "Public",
+          "protection": "—",
+          "note": "A manual time peer left by the image's AllSync setting.",
+          "binding": [
+            {
+              "kind": "not-permitted",
+              "proto": "udp",
+              "port": "123"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "category": "aws",
+      "title": "AWS link-local services",
+      "scope": "Inside the VPC · not filtered by security groups",
+      "rows": [
+        {
+          "ref": "4.1",
+          "service": "DNS (VPC resolver)",
+          "source": "All 5 hosts",
+          "destination": "10.0.0.2",
+          "protection": "—",
+          "note": "Names outside the domain; the domain zone is pinned to the DCs by NRPT.",
+          "binding": [
+            {
+              "kind": "platform",
+              "proto": "udp+tcp",
+              "port": "53"
+            }
+          ]
+        },
+        {
+          "ref": "4.2",
+          "service": "Instance metadata (IMDS)",
+          "source": "All 5 hosts",
+          "destination": "169.254.169.254",
+          "protection": "—",
+          "note": "SSM agent, Defender.",
+          "binding": [
+            {
+              "kind": "platform",
+              "proto": "tcp",
+              "port": "80"
+            }
+          ]
+        },
+        {
+          "ref": "4.3",
+          "service": "Amazon Time Sync",
+          "source": "All 5 hosts",
+          "destination": "169.254.169.123",
+          "protection": "—",
+          "note": "The hosts' current time source.",
+          "binding": [
+            {
+              "kind": "platform",
+              "proto": "udp",
+              "port": "123"
+            }
+          ]
+        },
+        {
+          "ref": "4.4",
+          "service": "Windows activation (KMS)",
+          "source": "All 5 hosts",
+          "destination": "169.254.169.250",
+          "protection": "—",
+          "note": "Once at boot.",
+          "binding": [
+            {
+              "kind": "platform",
+              "proto": "tcp",
+              "port": "1688"
+            }
+          ]
+        },
+        {
+          "ref": "4.5",
+          "service": "DHCP",
+          "source": "All 5 hosts",
+          "destination": "VPC router",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "platform",
+              "proto": "udp",
+              "port": "67"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "category": "cluster",
+      "title": "Node ↔ node",
+      "scope": "Inside the VPC · each node admits only its three peers' node addresses (.10)",
+      "rows": [
+        {
+          "ref": "5.1",
+          "service": "Cluster heartbeat and messaging",
+          "source": "Each node",
+          "destination": "Its 3 peers",
+          "protection": "DTLS",
+          "note": "Also carries the cluster's internal virtual adapter traffic.",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC cluster service UDP (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        },
+        {
+          "ref": "5.2",
+          "service": "Cluster join",
+          "source": "Each node",
+          "destination": "Its 3 peers",
+          "protection": "—",
+          "note": "Every restart is a rejoin, so this stays open.",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC cluster service TCP (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        },
+        {
+          "ref": "5.3",
+          "service": "RPC endpoint mapper",
+          "source": "Each node",
+          "destination": "Its 3 peers",
+          "protection": "Authenticated RPC",
+          "note": "",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC RPC endpoint mapper (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        },
+        {
+          "ref": "5.4",
+          "service": "Dynamic RPC (cluster API, WMI, service control)",
+          "source": "Each node",
+          "destination": "Its 3 peers",
+          "protection": "Authenticated RPC",
+          "note": "",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC dynamic RPC (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        },
+        {
+          "ref": "5.5",
+          "service": "SMB (add node, validation)",
+          "source": "Each node",
+          "destination": "Peers",
+          "protection": "SMB signing",
+          "note": "Admitted by the broader \"Clustered SMB\" rule, not a per-peer rule.",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "Clustered SMB (from|to) private networks",
+              "cidr": "10.0.0.0/16",
+              "allow_shared_rule": true
+            }
+          ],
+          "enforced_by": "Per-host groups (10.0.0.0/16 rule)"
+        },
+        {
+          "ref": "5.6",
+          "service": "Validation, add node",
+          "source": "Each node",
+          "destination": "Its 3 peers (.10)",
+          "protection": "—",
+          "note": "Pings to peers' .11 and .12 addresses are not permitted and are dropped, with no failure seen.",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC ICMP (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        },
+        {
+          "ref": "5.7",
+          "service": "NetBIOS name service (\"Cluster Administrator\")",
+          "source": "Each node",
+          "destination": "Its 3 peers",
+          "protection": "—",
+          "note": "Microsoft lists it without a stated function; SMB 2 and later do not use NetBIOS.",
+          "binding": [
+            {
+              "kind": "host",
+              "description": "WSFC NetBIOS name resolution (from|to) .+",
+              "peer_scope": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "category": "cluster",
+      "title": "Nodes → file share witness",
+      "scope": "Inside the VPC · witness group",
+      "rows": [
+        {
+          "ref": "6.1",
+          "service": "SMB, file share witness",
+          "source": "The 4 nodes (.10)",
+          "destination": "Witness",
+          "protection": "SMB signing",
+          "note": "Written by the node that owns the cluster core group.",
+          "binding": [
+            {
+              "kind": "host",
+              "direction": "ingress",
+              "description": "File share witness SMB from .+",
+              "peer_scope": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "category": "client",
+      "title": "Clients → file server role",
+      "scope": "VPC clients directly · HQ clients through the tunnel",
+      "rows": [
+        {
+          "ref": "7.1",
+          "service": "SMB 3, continuously available shares",
+          "source": "VPC 10.0.0.0/16",
+          "destination": "Role address (.12) on the owning node",
+          "protection": "SMB 3 encryption",
+          "note": "Shares data and sites require encryption.",
+          "binding": [
+            {
+              "kind": "host",
+              "direction": "ingress",
+              "description": "Clustered SMB from private networks",
+              "cidr": "10.0.0.0/16",
+              "allow_shared_rule": true
+            }
+          ]
+        },
+        {
+          "ref": "7.2",
+          "service": "SMB 3, continuously available shares",
+          "source": "HQ 10.69.0.0/16",
+          "destination": "Role address (.12) on the owning node",
+          "protection": "SMB 3 encryption, WireGuard",
+          "note": "Source addresses are routed, not translated.",
+          "enforced_by": "Per-host groups, site gateway",
+          "binding": [
+            {
+              "kind": "host",
+              "direction": "ingress",
+              "description": "Clustered SMB from private networks",
+              "cidr": "10.69.0.0/16"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "category": "domain",
+      "title": "Domain member → domain controllers",
+      "scope": "All 5 hosts → {dc_cidr} · shared group {shared_group}",
+      "rows": [
+        {
+          "ref": "8.1",
+          "service": "DNS (DC locator, domain zone)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "—",
+          "note": "Includes the cluster registering its names.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "dns-udp",
+                "dns-tcp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.2",
+          "service": "Kerberos",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "Kerberos",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "kerberos-tcp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.3",
+          "service": "Kerberos",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "Kerberos",
+          "note": "Windows clients use TCP by default.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "kerberos-udp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.4",
+          "service": "Time (W32Time)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "w32time"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.5",
+          "service": "RPC endpoint mapper",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "Authenticated RPC",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "rpc-endpoint-mapper"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.6",
+          "service": "Dynamic RPC (Netlogon, LSA, SAM)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "Authenticated RPC",
+          "note": "Includes the 30-day machine password change.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "dynamic-rpc"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.7",
+          "service": "LDAP ping (DC locator)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "ldap-udp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.8",
+          "service": "LDAP (Group Policy, cluster objects)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "LDAP signing",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "ldap-tcp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.9",
+          "service": "SMB (SYSVOL, Group Policy)",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "SMB signing",
+          "note": "The per-host \"Clustered SMB to 10.69.0.0/16\" rule also matches this.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "smb"
+              ]
+            },
+            {
+              "kind": "host",
+              "direction": "egress",
+              "description": "Clustered SMB to private networks",
+              "cidr": "10.69.0.0/16"
+            }
+          ]
+        },
+        {
+          "ref": "8.10",
+          "service": "Kerberos password set",
+          "source": "Cluster nodes",
+          "destination": "Both DCs",
+          "protection": "Kerberos",
+          "note": "Cluster only: sets the cluster name and role object passwords as they come online.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "kpasswd-tcp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.11",
+          "service": "Kerberos password set",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "Kerberos",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "kpasswd-udp"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.12",
+          "service": "Global Catalog",
+          "source": "Cluster nodes",
+          "destination": "Both DCs",
+          "protection": "LDAP signing",
+          "note": "Cluster only: used while forming and bringing the cluster name online.",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "global-catalog"
+              ]
+            }
+          ]
+        },
+        {
+          "ref": "8.13",
+          "service": "LDAP keepalive ping",
+          "source": "All 5 hosts",
+          "destination": "Both DCs",
+          "protection": "—",
+          "note": "",
+          "binding": [
+            {
+              "kind": "shared",
+              "keys": [
+                "ldap-ping"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "9",
+      "category": "tunnel",
+      "title": "Site tunnel",
+      "scope": "VPC ↔ HQ across the Internet · site gateway group",
+      "rows": [
+        {
+          "ref": "9.1",
+          "service": "WireGuard, opened by HQ",
+          "source": "HQ firewall",
+          "destination": "{gateway}",
+          "protection": "WireGuard",
+          "note": "Every flow 7 (HQ) and 8 packet rides in the tunnel. HQ firewall rules are outside this register.",
+          "binding": [
+            {
+              "kind": "gateway",
+              "direction": "ingress",
+              "rule": "wireguard",
+              "cidr": "0.0.0.0/0"
+            }
+          ]
+        },
+        {
+          "ref": "9.2",
+          "service": "WireGuard, opened by the gateway",
+          "source": "{gateway}",
+          "destination": "HQ firewall",
+          "protection": "WireGuard",
+          "note": "The gateway opens the tunnel to HQ's endpoint by name; HQ is moving to answer only.",
+          "binding": [
+            {
+              "kind": "gateway",
+              "direction": "egress",
+              "rule": "wireguard",
+              "cidr": "0.0.0.0/0"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "G",
+      "category": "gap",
+      "title": "Not permitted, under evaluation",
+      "scope": "",
+      "rows": [
+        {
+          "ref": "G.1",
+          "service": "SMB Witness (failover notification for CA shares)",
+          "source": "SMB clients",
+          "destination": "Node addresses",
+          "protection": "Authenticated RPC",
+          "note": "Without it, clients detect a failover by timeout. To be measured in the Tier 1 failover test before any change.",
+          "binding": [
+            {
+              "kind": "gap",
+              "proto": "tcp",
+              "port": "135, 49152–65535"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "not_permitted": [
+    "<code>636</code> LDAPS and <code>3269</code> Global Catalog over TLS to the DCs: no client uses them.",
+    "<code>9389</code> AD Web Services: directory scripts run on the DC itself.",
+    "<code>5985</code> WinRM between hosts: management uses SSH.",
+    "<code>137–139</code> NetBIOS to the witness and from clients: SMB 2 and later use 445 only.",
+    "<code>1194</code> OpenVPN: removed when the hosts moved to the site gateway.",
+    "Any inbound from the Internet other than the two per-run addresses and the tunnel."
+  ]
+}
