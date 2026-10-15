@@ -1,0 +1,50 @@
+# =========================================================================================== #
+# GitLab pipeline for the ports, protocols and services register; mirrors
+# .github/workflows/ports-protocols.yml. Built for an air-gapped instance: the Python image comes
+# from the PYTHON_IMAGE variable (override it at instance, group or project level with an internal
+# registry reference pinned by digest, never a tag), pip reads PIP_INDEX_URL when the instance sets
+# it, and the page uses only fonts installed on the reader's machine.
+# =========================================================================================== #
+---
+variables:
+  PYTHON_IMAGE: 'python:3.12.11-slim@sha256:47ae396f09c1303b8653019811a8498470603d7ffefc29cb07c88f1f8cb3d19f'
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+stages:
+  - test
+  - deploy
+
+.register-inputs: &register-inputs
+  - 'terraform/aws.tfvars'
+  - 'docs/reference/ports-protocols/**/*'
+  - '.gitlab-ci.yml'
+
+ports-protocols-check:
+  stage: test
+  image: $PYTHON_IMAGE
+  rules:
+    - changes: *register-inputs
+  script:
+    - pip install -r docs/reference/ports-protocols/requirements.txt
+    - python docs/reference/ports-protocols/build.py --check
+
+pages:
+  stage: deploy
+  image: $PYTHON_IMAGE
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      changes: *register-inputs
+  needs:
+    - ports-protocols-check
+  script:
+    - pip install -r docs/reference/ports-protocols/requirements.txt
+    - python docs/reference/ports-protocols/build.py --site public --stamp "$CI_COMMIT_SHORT_SHA"
+  artifacts:
+    paths:
+      - public

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{{ t.system.title | replace('Windows ', '') }} Ports &amp; Protocols</title>
+<style>
+{{ tokens_css }}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font-body); }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 36px; }
+h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(1.7rem, 3.2vw, 2.4rem); font-weight: 700; line-height: 1.1; }
+h2 { font-size: 1.3rem; font-weight: 600; }
+p { margin: 0; max-width: 70ch; }
+.mono, code { font-family: var(--font-mono); font-size: 0.92em; }
+.eyebrow { font: 600 0.75rem/1 var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+header.sheet { display: grid; gap: 14px; border-bottom: 2px solid var(--fg); padding-bottom: 18px; }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px 28px; margin: 0; }
+.meta div { min-width: 0; }
+.meta dt { font: 600 0.72rem/1.3 var(--font-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.meta dd { margin: 2px 0 0; font-size: 0.92rem; }
+section { display: grid; gap: 14px; min-width: 0; }
+figure { margin: 0; display: grid; gap: 12px; min-width: 0; }
+.scroll { overflow-x: auto; min-width: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.scroll svg { display: block; width: 100%; min-width: 980px; height: auto; }
+figcaption { color: var(--muted); font-size: 0.9rem; max-width: 90ch; }
+{{ diagram_css }}
+.key { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 0.88rem; }
+.key li { display: flex; align-items: center; gap: 8px; }
+.sw { width: 26px; height: 0; border-top: 3px solid; flex: none; }
+.sw.dash { border-top-style: dashed; }
+.sw-mgmt { border-color: var(--c-mgmt); } .sw-egress { border-color: var(--c-egress); } .sw-aws { border-color: var(--c-aws); }
+.sw-cluster { border-color: var(--c-cluster); } .sw-client { border-color: var(--c-client); } .sw-domain { border-color: var(--c-domain); }
+.sw-tunnel { border-color: var(--c-tunnel); border-top-width: 6px; } .sw-gap { border-color: var(--c-gap); }
+.bounds { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0; border-top: 1px solid var(--line); }
+.bounds div { padding: 14px 18px 14px 0; border-bottom: 1px solid var(--rule); min-width: 0; display: grid; gap: 4px; }
+.bounds h3 { margin: 0; font: 600 0.95rem var(--font-display); }
+.bounds p { font-size: 0.9rem; color: var(--muted); }
+table { border-collapse: collapse; width: 100%; min-width: 1080px; font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+thead th { position: sticky; top: 0; background: var(--surface); text-align: left; font: 600 0.72rem/1.3 var(--font-body); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding: 10px 10px; border-bottom: 2px solid var(--fg); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+td.ref, td.port, td.proto { font-family: var(--font-mono); white-space: nowrap; }
+td.ref { color: var(--muted); }
+td.port { font-weight: 600; }
+tr.grp th { text-align: left; padding: 16px 10px 8px; font: 600 0.92rem var(--font-display); border-bottom: 1px solid var(--line); background: var(--bg); }
+tr.grp th .badge-inline { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--on-badge); font: 600 0.75rem var(--font-mono); margin-right: 8px; vertical-align: -1px; }
+.bg-mgmt { background: var(--c-mgmt); } .bg-egress { background: var(--c-egress); } .bg-aws { background: var(--c-aws); }
+.bg-cluster { background: var(--c-cluster); } .bg-client { background: var(--c-client); } .bg-domain { background: var(--c-domain); }
+.bg-tunnel { background: var(--c-tunnel); } .bg-gap { background: var(--c-gap); }
+tr.grp th small { font: 400 0.82rem var(--font-body); color: var(--muted); margin-left: 6px; }
+td.note { color: var(--muted); min-width: 220px; }
+.notpermitted { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 24px; margin: 0; padding: 0; list-style: none; font-size: 0.9rem; }
+.notpermitted li { border-left: 3px solid var(--line); padding-left: 10px; }
+footer { border-top: 1px solid var(--line); padding-top: 14px; font-size: 0.85rem; color: var(--muted); display: grid; gap: 6px; }
+footer p { max-width: 110ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="sheet">
+    <span class="eyebrow">Ports, Protocols &amp; Services</span>
+    <h1>{{ t.system.title }}</h1>
+    <dl class="meta">
+      <div><dt>System</dt><dd>{{ t.system.summary }}</dd></div>
+      <div><dt>Enclaves</dt><dd>AWS VPC <span class="mono">{{ t.enclaves.vpc.cidr }}</span> ({{ t.enclaves.vpc.region }}) · HQ <span class="mono">{{ t.enclaves.hq.cidr }}</span> · Internet</dd></div>
+      <div><dt>Configuration of record</dt><dd><span class="mono">terraform/aws.tfvars</span> · <span class="mono">aws-site-gateway@{{ gateway_commit[:7] }}</span>{% if stamp %} · built from <span class="mono">{{ stamp }}</span>{% endif %}</dd></div>
+    </dl>
+  </header>
+
+  <section aria-labelledby="diagram-h">
+    <h2 id="diagram-h">Boundary diagram</h2>
+    <figure>
+      <div class="scroll">
+{{ diagram_svg }}
+      </div>
+      <figcaption>Arrows point from the side that opens the connection; the security groups are stateful, so replies are not drawn. Flows 1–4 and 8 apply to all five hosts, including the witness. Flow 9 is the only path between the VPC and HQ: domain traffic (8) and HQ client SMB (7) are routed inside it. The dashed flow G is not permitted today.</figcaption>
+    </figure>
+    <ul class="key" aria-label="Flow key">
+      <li><span class="sw sw-mgmt"></span>Management (1, 2)</li>
+      <li><span class="sw sw-egress"></span>Internet egress (3)</li>
+      <li><span class="sw sw-aws"></span>AWS services (4)</li>
+      <li><span class="sw sw-cluster"></span>Cluster (5, 6)</li>
+      <li><span class="sw sw-client"></span>Client SMB (7)</li>
+      <li><span class="sw sw-domain"></span>Domain (8)</li>
+      <li><span class="sw sw-tunnel"></span>Site tunnel (9)</li>
+      <li><span class="sw dash sw-gap"></span>Not permitted, under evaluation (G)</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="bounds-h">
+    <h2 id="bounds-h">Boundary crossings</h2>
+    <div class="bounds">
+      {%- for b in reg.boundaries %}
+      <div><h3>{{ b.title }}</h3><p>{{ b.text }}</p></div>
+      {%- endfor %}
+    </div>
+  </section>
+
+  <section aria-labelledby="reg-h">
+    <h2 id="reg-h">PPS register</h2>
+    <p>Each row is one service, keyed to the diagram. For rows bound to a security group, the port, protocol and address scope are read from and checked against the Terraform inputs, and the build fails if a per-host rule, a shared domain-member rule or either of the gateway's two WireGuard rules is missing from this register or no longer matches its row.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Ref</th><th>Port</th><th>Proto</th><th>Service</th><th>Source</th><th>Destination</th><th>Enforced by</th><th>Protection</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          {%- for f in flows %}
+          <tr class="grp"><th colspan="9"><span class="badge-inline bg-{{ f.category }}">{{ f.id }}</span>{{ f.title }}{% if f.scope %}<small>{{ f.scope }}</small>{% endif %}</th></tr>
+          {%- for r in f.rows %}
+          <tr><td class="ref">{{ r.ref }}</td><td class="port">{{ r.port }}</td><td class="proto">{{ r.proto }}</td><td>{{ r.service }}</td><td>{{ r.source }}</td><td>{{ r.destination }}</td><td>{{ r.enforced_by }}</td><td>{{ r.protection }}</td><td class="note">{{ r.note }}</td></tr>
+          {%- endfor %}
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="np-h">
+    <h2 id="np-h">Not permitted by design</h2>
+    <ul class="notpermitted">
+      {%- for item in reg.not_permitted %}
+      <li>{{ item | safe }}</li>
+      {%- endfor %}
+    </ul>
+  </section>
+
+  <footer>
+    <p>Generated from <span class="mono">terraform/aws.tfvars</span> ({{ counts.host_rules }} per-host rules), the shared domain member group in <span class="mono">site-gateway.json</span> ({{ counts.shared_rules }} rules), the register annotations and <span class="mono">topology.json</span>. Every per-host rule, every shared domain-member rule, and both WireGuard gateway directions are bound to a row above; other site-gateway rules are outside this register. Rows not bound to a group (run-scoped, AWS platform, not permitted, under evaluation), the wording of sources and destinations, and the prose outside the register table are annotations the build does not check. Nor does it check which security groups each network interface attaches, or which host carries a bound rule. The gateway snapshot takes its rules from that repository's <code>terraform/resources.tf</code> and their variable values from its <code>terraform/aws.tfvars</code>; rules written in other files, overrides or modules, and variable values set anywhere else, are not read. Network ACLs allow all traffic; Windows Firewall is on in every profile but admits cluster and file traffic from any address, so the security groups are the effective control between hosts.</p>
+    <p>This is a working register, not an approved PPSM registration.</p>
+  </footer>
+</div>
+</body>
+</html>

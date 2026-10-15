@@ -1,0 +1,136 @@
+{
+  "domain_controller_cidr": "10.69.112.4/31",
+  "domain_member_egress": {
+    "dns-tcp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 53,
+      "ip_protocol": "tcp",
+      "to_port": 53
+    },
+    "dns-udp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 53,
+      "ip_protocol": "udp",
+      "to_port": 53
+    },
+    "dynamic-rpc": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 49152,
+      "ip_protocol": "tcp",
+      "to_port": 65535
+    },
+    "global-catalog": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 3268,
+      "ip_protocol": "tcp",
+      "to_port": 3268
+    },
+    "kerberos-tcp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 88,
+      "ip_protocol": "tcp",
+      "to_port": 88
+    },
+    "kerberos-udp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 88,
+      "ip_protocol": "udp",
+      "to_port": 88
+    },
+    "kpasswd-tcp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 464,
+      "ip_protocol": "tcp",
+      "to_port": 464
+    },
+    "kpasswd-udp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 464,
+      "ip_protocol": "udp",
+      "to_port": 464
+    },
+    "ldap-ping": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 8,
+      "ip_protocol": "icmp",
+      "to_port": 0
+    },
+    "ldap-tcp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 389,
+      "ip_protocol": "tcp",
+      "to_port": 389
+    },
+    "ldap-udp": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 389,
+      "ip_protocol": "udp",
+      "to_port": 389
+    },
+    "rpc-endpoint-mapper": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 135,
+      "ip_protocol": "tcp",
+      "to_port": 135
+    },
+    "smb": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 445,
+      "ip_protocol": "tcp",
+      "to_port": 445
+    },
+    "w32time": {
+      "cidr_ipv4": "10.69.112.4/31",
+      "from_port": 123,
+      "ip_protocol": "udp",
+      "to_port": 123
+    }
+  },
+  "domain_member_group_name": "tcnaw-domain-member",
+  "gateway_rules": {
+    "egress": {
+      "http": {
+        "cidr_ipv4": "0.0.0.0/0",
+        "from_port": 80,
+        "ip_protocol": "tcp",
+        "to_port": 80
+      },
+      "https": {
+        "cidr_ipv4": "0.0.0.0/0",
+        "from_port": 443,
+        "ip_protocol": "tcp",
+        "to_port": 443
+      },
+      "vpc": {
+        "cidr_ipv4": "10.0.0.0/16",
+        "from_port": -1,
+        "ip_protocol": "-1",
+        "to_port": -1
+      },
+      "wireguard": {
+        "cidr_ipv4": "0.0.0.0/0",
+        "from_port": 51820,
+        "ip_protocol": "udp",
+        "to_port": 51820
+      }
+    },
+    "ingress": {
+      "vpc": {
+        "cidr_ipv4": "10.0.0.0/16",
+        "from_port": -1,
+        "ip_protocol": "-1",
+        "to_port": -1
+      },
+      "wireguard": {
+        "cidr_ipv4": "0.0.0.0/0",
+        "from_port": 51820,
+        "ip_protocol": "udp",
+        "to_port": 51820
+      }
+    }
+  },
+  "source": {
+    "commit": "75d68fa6698a9d1e050ef29c4bc1fd6c7289161d",
+    "repository": "aws-site-gateway"
+  }
+}

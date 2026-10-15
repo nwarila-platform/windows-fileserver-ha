@@ -1,0 +1,86 @@
+# =========================================================================================== #
+# Ports, protocols and services register.
+# check: rebuilds docs/reference/ports-protocols/ from the security group inputs and fails when
+#        the committed register or diagram is out of date, or when a per-host rule, a shared
+#        domain-member rule or either of the gateway's two WireGuard rules is missing from it or no
+#        longer matches its row's port, protocol or address scope.
+# pages: publishes the rendered page from main to GitHub Pages (mirrored by .gitlab-ci.yml).
+# =========================================================================================== #
+---
+name: Ports and protocols
+
+"on":
+  pull_request:
+    paths:
+      - 'terraform/aws.tfvars'
+      - 'docs/reference/ports-protocols/**'
+      - '.github/workflows/ports-protocols.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/aws.tfvars'
+      - 'docs/reference/ports-protocols/**'
+      - '.github/workflows/ports-protocols.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12.11'
+
+      - name: Install the register tools
+        run: pip install -r docs/reference/ports-protocols/requirements.txt
+
+      - name: Check the register against the security group rules
+        run: python docs/reference/ports-protocols/build.py --check
+
+  pages:
+    if: github.event_name == 'push'
+    needs: check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12.11'
+
+      - name: Install the register tools
+        run: pip install -r docs/reference/ports-protocols/requirements.txt
+
+      - name: Build the published page
+        run: python docs/reference/ports-protocols/build.py --site public --stamp "${GITHUB_SHA::7}"
+
+      - name: Upload the page
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
