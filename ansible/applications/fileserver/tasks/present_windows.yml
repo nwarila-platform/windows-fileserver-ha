@@ -464,6 +464,7 @@
         parameters:
           ClusterName: "{{ fileserver_running.cluster.name }}"
           ResourceName: "{{ fileserver_running.cluster.name_resource }}"
+          OwnerGroup: 'Cluster Group'
           RegisterAllProvidersIP: >-
             {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
           HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
@@ -553,6 +554,29 @@
             )
             | join('\n')
           }}
+
+- name: 'MAIN | Converge The File Server Access Point Name Parameters'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Converge The File Server Access Point Name Parameters ] -------- #
+
+    - name: 'PROCESS | Converge The File Server Access Point Name Parameters'
+      ansible.windows.win_powershell:
+        depth: 3
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          ResourceName: "{{ fileserver_running.cluster.file_server.name }}"
+          OwnerGroup: "{{ fileserver_running.cluster.file_server.name }}"
+          RegisterAllProvidersIP: >-
+            {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
+          HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterNameParameters.ps1') }}
+
+    #endregion --- [ Process: Converge The File Server Access Point Name Parameters ] -------- #
 
 - name: 'MAIN | Read The Clustered File Server Owner'
   when:
