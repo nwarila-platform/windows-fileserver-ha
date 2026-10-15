@@ -410,8 +410,7 @@
     #region ------ [ Process: Form The File Server Cluster ] ---------------------------------- #
 
     - name: 'PROCESS | Run The File Server Cluster Formation'
-      # The service-account password is used for the signed/sealed CNO LDAP operation and the
-      # delegation-capable batch logon.
+      # The service account password is used only for the delegation-capable batch logon.
       no_log: true
       register: '__fileserver_cluster__'
 
