@@ -304,14 +304,30 @@ Describe 'Measure-ClusteredSmbShareAccess' {
 
   It 'T09 records a persistent-open failure and later recovers without probe failure' {
     $Case = New-ProbeCase -Name 'persist-retry'
-    $global:MeasureClusteredSmbShareAccessState['leaf'] = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
-    $global:MeasureClusteredSmbShareAccessObservation = {
-      Param ($DnsQuery, $ServerName, $State)
-      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
-      $PersistFile = [IO.Path]::Combine([String]$State['leaf'], 'persist', 'p.txt')
-      If ([Int32]$State['observation_calls'] -eq 1) { [IO.File]::WriteAllText($PersistFile, 'block') }
-      If ([Int32]$State['observation_calls'] -eq 3 -and [IO.File]::Exists($PersistFile)) { [IO.File]::Delete($PersistFile) }
-      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    $global:MeasureClusteredSmbShareAccessPersistAttempt = {
+      Param ($Context, $State)
+      $PersistFile = [IO.Path]::Combine($Context.Directory, 'p.txt')
+      If ([Int32]$State['persist_attempts'] -eq 0 -and -not [Boolean]$State['persist_fault_armed']) {
+        [IO.File]::WriteAllText($PersistFile, 'block')
+        $State['persist_fault_armed'] = $True
+      }
+      If ([Int32]$State['persist_failures'] -gt 0 -and -not [Boolean]$State['persist_fault_recovered']) {
+        [IO.File]::Delete($PersistFile)
+        $State['persist_fault_recovered'] = $True
+      }
+      If ($Null -eq $State['persist_stream']) {
+        $State['persist_stream'] = [IO.FileStream]::new(
+          $PersistFile,
+          [IO.FileMode]::CreateNew,
+          [IO.FileAccess]::ReadWrite,
+          [IO.FileShare]::ReadWrite,
+          4096,
+          [IO.FileOptions]::WriteThrough
+        )
+      }
+      $Payload = [Text.UTF8Encoding]::new($False).GetBytes(('retry|{0}' -f $Context.Attempt))
+      $State['persist_stream'].Write($Payload, 0, $Payload.Length)
+      $State['persist_stream'].Flush($True)
     }
     $Run = Invoke-Probe -Case $Case -DurationSeconds 2
     $Rows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-persist.csv'))
@@ -328,8 +344,14 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
-      If ([Int32]$State['observation_calls'] -eq 2) { [IO.Directory]::Move([String]$State['openclose'], [String]$State['renamed']) }
-      If ([Int32]$State['observation_calls'] -eq 6) { [IO.Directory]::Move([String]$State['renamed'], [String]$State['openclose']) }
+      If ([Int32]$State['openclose_attempts'] -gt 0 -and -not [Boolean]$State['openclose_outage_started']) {
+        [IO.Directory]::Move([String]$State['openclose'], [String]$State['renamed'])
+        $State['openclose_outage_started'] = $True
+      }
+      If ([Int32]$State['openclose_failures'] -gt 0 -and -not [Boolean]$State['openclose_outage_recovered']) {
+        [IO.Directory]::Move([String]$State['renamed'], [String]$State['openclose'])
+        $State['openclose_outage_recovered'] = $True
+      }
       [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
     $Run = Invoke-Probe -Case $Case -DurationSeconds 2
@@ -624,8 +646,13 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
-      If ([Int32]$State['observation_calls'] -eq 3) {
+      If (
+        [Int32]$State['openclose_attempts'] -gt 0 -and
+        [Int32]$State['persist_attempts'] -gt 0 -and
+        -not [Boolean]$State['stop_request_written']
+      ) {
         [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['stop_path'], 'stop.request'), '')
+        $State['stop_request_written'] = $True
       }
       [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
@@ -644,7 +671,12 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
-      If ([Int32]$State['observation_calls'] -eq 4) {
+      If (
+        [Int32]$State['openclose_rows'] -gt 0 -and
+        [Int32]$State['persist_rows'] -gt 0 -and
+        -not [Boolean]$State['tail_checked']
+      ) {
+        $State['tail_checked'] = $True
         $State['tail_success'] = $True
         ForEach ($Name In @('attempts-openclose.csv', 'attempts-persist.csv')) {
           $Path = [IO.Path]::Combine([String]$State['evidence_path'], $Name)
