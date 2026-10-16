@@ -101,10 +101,11 @@
         public_key: "{{ domain_automation_public_key }}"
     launch_key_file: "{{ lookup('ansible.builtin.env', 'CI_PRIVATE_KEY') \
       | default('~/.ssh/nwarila-ec2-key', true) | expanduser }}"
+    # Domain SSH logins use UPNs because CVE-2026-106583-patched OpenSSH rejects backslashes.
     credential_sets:
       - name: 'domain-automation'
         connection: 'ssh'
-        user: "{{ domain_automation_user }}"
+        user: "jenkins_runner@{{ domain_realm }}"
         private_key: "{{ domain_automation_private_key }}"
       - name: 'image-administrator'
         connection: 'ssh'
@@ -327,7 +328,7 @@
         credential_resolver_candidates:
           - name: 'cluster-service-account'
             connection: 'ssh'
-            user: 'TCN\svc-fscluster-mgr'
+            user: 'svc-fscluster-mgr@tcn.trinitytechnicalservices.com'
             password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"
         credential_resolver_require_elevated: true
         credential_resolver_wait_rounds: 0
