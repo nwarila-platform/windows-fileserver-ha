@@ -28,7 +28,7 @@ policy.
 
 **Gap:** `ansible/inventory/aws_ec2.yml` sets `StrictHostKeyChecking=no` and
 `UserKnownHostsFile=/dev/null`, so direct SSH accepts every host key and records none.
-**Why debt, not a defect:** All five declared connections are direct SSH; there is no Session
+**Why debt, not a defect:** All six declared connections are direct SSH; there is no Session
 Manager or WinRM leg. Short-lived hosts and run-scoped security-group paths narrow exposure without
 authenticating the endpoint, so the deployment works while retaining that trust gap.
 **Correction:** Before the first `credential_resolver` attempt, acquire each host's public SSH keys
