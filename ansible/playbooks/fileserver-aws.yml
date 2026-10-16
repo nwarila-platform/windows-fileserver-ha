@@ -2,16 +2,17 @@
 # File: 'ansible/playbooks/fileserver-aws.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Brings five ephemeral EC2 instances through host preparation, forms the declared four-node
+# Brings six ephemeral EC2 instances through host preparation, forms the declared four-node
 # cluster under its service account, adopts both shared disks, publishes the implemented AZ-a
-# clustered data share, and configures its dedicated third-AZ file-share witness.
+# clustered data share, and configures its dedicated third-AZ file-share witness. The sixth, a
+# domain member outside the cluster, receives host preparation only.
 #
 # Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
 # ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
 #
 # The order is load-bearing: identity resolution, host bootstrap, and node prerequisites precede
-# singleton cluster formation, fresh readback, and credential cleanup. The AZ-b file-server role
-# and Storage Replica remain deferred.
+# the release of stale directory identities, singleton cluster formation, fresh readback, and
+# credential cleanup. The AZ-b file-server role and Storage Replica remain deferred.
 #
 # gather_facts and become are disabled throughout because the framework's ansible.cfg makes
 # gathering explicit and escalation off. Implicit gathering would run a module over the shell
@@ -27,12 +28,14 @@
 
 - name: 'PLAY | Validate The Ephemeral AWS Inventory Contract'
   hosts: 'localhost'
+  any_errors_fatal: true
   tasks:
-    - name: 'INVENTORY | Require The Ratified Five-Instance Shape'
+    - name: 'INVENTORY | Require The Ratified Six-Instance Shape'
       ansible.builtin.assert:
         that:
           - groups['fileserver_nodes'] | default([]) | length == 4
           - groups['fileserver_witness'] | default([]) | length == 1
+          - groups['fileserver_client'] | default([]) | length == 1
           - groups['fileserver_cluster_former'] | default([]) | length == 1
           - groups['fileserver_cluster_former'] | default([]) == ['tcnaw-hafs01a']
           - >-
@@ -44,16 +47,18 @@
             (
               (groups['fileserver_nodes'] | default([]))
               + (groups['fileserver_witness'] | default([]))
+              + (groups['fileserver_client'] | default([]))
             ) | sort
         fail_msg: >-
           Refusing to configure: expected 4 hosts in 'fileserver_nodes', 1 in
-          'fileserver_witness', and only tcnaw-hafs01a in the overlapping
-          'fileserver_cluster_former'; found
-          {{ groups['fileserver_nodes'] | default([]) | length }} and
-          {{ groups['fileserver_witness'] | default([]) | length }}, former hosts
+          'fileserver_witness', 1 in 'fileserver_client', and only tcnaw-hafs01a in the
+          overlapping 'fileserver_cluster_former'; found
+          {{ groups['fileserver_nodes'] | default([]) | length }},
+          {{ groups['fileserver_witness'] | default([]) | length }} and
+          {{ groups['fileserver_client'] | default([]) | length }}, former hosts
           {{ groups['fileserver_cluster_former'] | default([]) }}, and all hosts
           {{ groups['all'] | default([]) | sort }}. The dynamic EC2 inventory must carry exactly
-          the ratified 4 cluster nodes and 1 file-share witness before anything runs.
+          the ratified 4 cluster nodes, 1 file-share witness and 1 client before anything runs.
         quiet: true
 
     # Account-derived values are passed EXPLICITLY on the invocation, never read from the
@@ -76,7 +81,7 @@
 #region ------ [ Play: Configure The Guest ] -------------------------------------------------- #
 
 - name: 'PLAY | Configure The Guest (ephemeral AWS)'
-  hosts: 'fileserver_nodes:fileserver_witness'
+  hosts: 'fileserver_nodes:fileserver_witness:fileserver_client'
   any_errors_fatal: true
   vars:
     domain_realm: 'tcn.trinitytechnicalservices.com'
@@ -96,10 +101,11 @@
         public_key: "{{ domain_automation_public_key }}"
     launch_key_file: "{{ lookup('ansible.builtin.env', 'CI_PRIVATE_KEY') \
       | default('~/.ssh/nwarila-ec2-key', true) | expanduser }}"
+    # Domain SSH logins use UPNs because CVE-2026-106583-patched OpenSSH rejects backslashes.
     credential_sets:
       - name: 'domain-automation'
         connection: 'ssh'
-        user: "{{ domain_automation_user }}"
+        user: "jenkins_runner@{{ domain_realm }}"
         private_key: "{{ domain_automation_private_key }}"
       - name: 'image-administrator'
         connection: 'ssh'
@@ -189,6 +195,19 @@
         domain_member: "{{ domain_membership }}"  # noqa: var-naming[no-role-prefix]
     #endregion --- [ Tasks: Domain Member ] --------------------------------------------------- #
 
+    #region ------ [ Tasks: Time Source ] ----------------------------------------------------- #
+    # The image ships AllSync; one cluster node used the AWS time service on 2026-10-14.
+    - name: 'PROCESS | Take The Time From The Domain Hierarchy'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+      notify: 'domain-time-restart-required'
+      ansible.windows.win_regedit:
+        data: 'NT5DS'
+        name: 'Type'
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+        state: 'present'
+        type: 'string'
+    #endregion --- [ Tasks: Time Source ] ----------------------------------------------------- #
+
     #region ------ [ Tasks: Windows Disk Manager ] -------------------------------------------- #
     # Each Function value names one EBS Multi-Attach volume from terraform/aws.tfvars. The first
     # host in each AZ is its designated preparer. Its partner observes the same attached volume
@@ -210,6 +229,19 @@
     #endregion --- [ Tasks: Windows Disk Manager ] -------------------------------------------- #
 
   #endregion --- [ Tasks ] -------------------------------------------------------------------- #
+
+  #region ------ [ Handlers ] ----------------------------------------------------------------- #
+  handlers:
+    - name: 'Restart the Windows Time service'
+      listen: 'domain-time-restart-required'
+
+      ansible.windows.win_service:
+        dependency_action: 'set'
+        desktop_interact: false
+        force_dependent_services: false
+        name: 'W32Time'
+        state: 'restarted'
+  #endregion --- [ Handlers ] ----------------------------------------------------------------- #
 
   #region ------ [ Post Tasks ] --------------------------------------------------------------- #
   # New-Cluster's RPC/Kerberos bind to the named domain controller triggers a reverse-PTR lookup
@@ -234,7 +266,7 @@
 
 #region ------ [ Play: File Server HA Baseline ] ---------------------------------------------- #
 
-- name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
+- name: 'PLAY | File Server HA Baseline (cluster nodes and witness, ephemeral AWS)'
   hosts: 'fileserver_nodes:fileserver_witness'
   any_errors_fatal: true
   vars_files:
@@ -322,7 +354,7 @@
         credential_resolver_candidates:
           - name: 'cluster-service-account'
             connection: 'ssh'
-            user: 'TCN\svc-fscluster-mgr'
+            user: 'svc-fscluster-mgr@tcn.trinitytechnicalservices.com'
             password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"
         credential_resolver_require_elevated: true
         credential_resolver_wait_rounds: 0
@@ -330,6 +362,71 @@
   #endregion --- [ Roles ] -------------------------------------------------------------------- #
 
 #endregion --- [ Play: Resolve The Cluster Credential On Every Delegate ] --------------------- #
+
+#region ------ [ Play: Release Stale Cluster Directory Identities ] -------------------------- #
+# A destroyed cluster leaves its prestaged name object enabled, which New-Cluster refuses as an
+# identity still in use. Only when every declared node holds no cluster state is that object
+# stale; a formed or partial cluster's identity is never read or written here.
+
+- name: 'PLAY | Release Stale Cluster Directory Identities (fresh deployments only)'
+  hosts: 'fileserver_nodes'
+  gather_facts: false
+  become: false
+  any_errors_fatal: true
+  vars:
+    fileserver_cluster: *fileserver_cluster_environment
+    fileserver_domain_controllers: ['tcnhq-dc01.tcn.trinitytechnicalservices.com', 'tcnhq-dc02.tcn.trinitytechnicalservices.com']
+  tasks:
+    - name: 'BEGIN | Read Whether This Node Holds Cluster State'
+      changed_when: false
+      check_mode: false
+      register: '__fileserver_cluster_membership__'
+      ansible.windows.win_powershell:
+        depth: 2
+        error_action: 'stop'
+        script: |
+          $Service = Get-Service -Name 'ClusSvc' -ErrorAction 'Stop'
+          $ClusDb = Join-Path -Path $env:SystemRoot -ChildPath 'Cluster\CLUSDB'
+          $Ansible.Result = [PSCustomObject]@{
+            fresh = [System.String]$Service.Status -ieq 'Stopped' -and
+              [System.String]$Service.StartType -ine 'Automatic' -and
+              -not (Test-Path -LiteralPath $ClusDb -PathType 'Leaf')
+          }
+
+    - name: 'PROCESS | Release The Stale Cluster Name Object'
+      when:
+        - inventory_hostname in groups['fileserver_cluster_former']
+        - >-
+          fileserver_cluster.nodes
+          | map('extract', hostvars, ['__fileserver_cluster_membership__', 'result', 'fresh'])
+          | select('sameas', true) | list | length == fileserver_cluster.nodes | length
+      block:
+        - name: 'PROCESS | Disable The Prestaged Cluster Name Object When Enabled'
+          # The password binds the directory explicitly; the session has no delegable credential.
+          no_log: true
+          register: '__fileserver_cluster_name_release__'
+          ansible.windows.win_powershell:
+            depth: 2
+            error_action: 'stop'
+            parameters:
+              ClusterName: "{{ fileserver_cluster.name }}"
+              DomainControllers: "{{ fileserver_domain_controllers }}"
+              Password: "{{ hostvars['localhost']['__fileserver_cluster_password__'] }}"
+            script: >-
+              {{ lookup('ansible.builtin.file', playbook_dir ~ '/../applications/fileserver/files/Set-PrestagedClusterNameObject.ps1') }}
+      rescue:
+        - name: 'PROCESS | Report That The Stale Cluster Name Object Could Not Be Released'
+          ansible.builtin.fail:
+            msg: >-
+              {{
+                (
+                  (__fileserver_cluster_name_release__.error | default([]) | map(attribute='output') | list)
+                  + [(__fileserver_cluster_name_release__.msg | default('Cluster name object release failed.'))]
+                )
+                | join('\n')
+              }}
+
+#endregion --- [ Play: Release Stale Cluster Directory Identities ] -------------------------- #
 
 #region ------ [ Play: Form And Configure The File Server Cluster ] --------------------------- #
 

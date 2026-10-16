@@ -1,0 +1,92 @@
+{
+  "system": {
+    "title": "Windows HA File Server",
+    "summary": "Four-node failover cluster TCNAW-FSCL01, file server role TCNAW-HAFS01, file share witness"
+  },
+  "enclaves": {
+    "internet": {
+      "label": "INTERNET"
+    },
+    "vpc": {
+      "label": "AWS VPC 10.0.0.0/16 · US-EAST-1",
+      "cidr": "10.0.0.0/16",
+      "region": "us-east-1"
+    },
+    "hq": {
+      "label": "HQ 10.69.0.0/16",
+      "cidr": "10.69.0.0/16"
+    }
+  },
+  "subnets": {
+    "subnet-0dbb7770d19f253ad": "10.0.0.0/19",
+    "subnet-0173d92ca70fc1e7a": "10.0.32.0/19",
+    "subnet-04260d6f543906b6b": "10.0.64.0/19",
+    "subnet-0fe915e5c0094408b": "10.0.96.0/19",
+    "subnet-03a855e712be7b399": "10.0.128.0/19"
+  },
+  "slots": {
+    "node_a1": "tcnaw-hafs01a",
+    "node_a2": "tcnaw-hafs02a",
+    "node_b1": "tcnaw-hafs01b",
+    "node_b2": "tcnaw-hafs02b",
+    "witness": "tcnaw-witnes01c"
+  },
+  "cluster": {
+    "name": "TCNAW-FSCL01",
+    "role": "TCNAW-HAFS01",
+    "role_detail": "continuously available SMB 3 shares",
+    "address_legend": ".10 node · .11 cluster name · .12 file server role"
+  },
+  "domain_controllers": [
+    {
+      "name": "tcnhq-dc01",
+      "address": "10.69.112.4"
+    },
+    {
+      "name": "tcnhq-dc02",
+      "address": "10.69.112.5"
+    }
+  ],
+  "site_gateway": {
+    "name": "tcnaw-sitegw01",
+    "detail": "WireGuard gateway"
+  },
+  "hq_firewall": {
+    "name": "HQ firewall (pfSense)",
+    "detail": [
+      "WireGuard peer",
+      "either end opens the tunnel"
+    ]
+  },
+  "clients": {
+    "vpc": {
+      "name": "VPC SMB clients",
+      "detail": "any subnet in the VPC"
+    },
+    "hq": {
+      "name": "HQ SMB clients"
+    }
+  },
+  "internet": {
+    "runner": {
+      "name": "GitHub Actions runner",
+      "detail": "per-run /32"
+    },
+    "operator": {
+      "name": "Operator workstation",
+      "detail": "per-run /32 · optional"
+    },
+    "endpoints": {
+      "name": "Public HTTPS endpoints",
+      "detail": "AWS APIs · SSM · Defender"
+    }
+  },
+  "link_local": {
+    "title": "AWS link-local services · not filtered by security groups",
+    "lines": [
+      "VPC DNS 10.0.0.2:53 · IMDS 169.254.169.254:80",
+      "Time Sync 169.254.169.123:123 · KMS 169.254.169.250:1688"
+    ]
+  },
+  "aria": "Network boundary diagram for the Windows HA file server, showing management, cluster, client, domain, AWS service, and WireGuard flows."
+}

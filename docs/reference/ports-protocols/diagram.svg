@@ -1,0 +1,164 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 840" role="img" aria-label="Network boundary diagram for the Windows HA file server, showing management, cluster, client, domain, AWS service, and WireGuard flows.">
+<style>:root {
+  --bg: #f4f6f8; --surface: #ffffff; --fg: #18212c; --muted: #566273; --line: #c6ced8; --rule: #e1e6ec;
+  --z-net: #eceff3; --z-vpc: #e8f0f7; --z-hq: #efecf6; --z-cluster: #e1f2ef; --z-aws: #f1efe8;
+  --c-mgmt: #7647c0; --c-egress: #5f6b7b; --c-aws: #8a6a12; --c-cluster: #0c8174; --c-client: #2a7a30;
+  --c-domain: #1d5bbd; --c-tunnel: #2f3945; --c-gap: #b86e00; --on-badge: #ffffff;
+  --font-display: "Segoe UI", "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+  --font-body: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "Liberation Mono", "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151c; --surface: #17202a; --fg: #e3e8ee; --muted: #9ba7b5; --line: #334050; --rule: #232d39;
+    --z-net: #141a22; --z-vpc: #13212f; --z-hq: #1b1829; --z-cluster: #10302b; --z-aws: #1f1d17;
+    --c-mgmt: #b18cf2; --c-egress: #a3afbd; --c-aws: #d9b75a; --c-cluster: #3fcab8; --c-client: #73c677;
+    --c-domain: #73a8ff; --c-tunnel: #cfd7e0; --c-gap: #f2a83c; --on-badge: #0d1117;
+    color-scheme: dark;
+  }
+}
+.zone { stroke: var(--line); stroke-width: 1.5; }
+.z-net { fill: var(--z-net); stroke-dasharray: 7 5; }
+.z-vpc { fill: var(--z-vpc); }
+.z-hq { fill: var(--z-hq); }
+.canvas { fill: var(--surface); }
+.zone-label { font: 600 12px var(--font-body); letter-spacing: 0.08em; fill: var(--muted); }
+.box { fill: var(--surface); stroke: var(--muted); stroke-width: 1.25; }
+.cluster { fill: var(--z-cluster); stroke: var(--c-cluster); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.awsbox { fill: var(--z-aws); stroke: var(--c-aws); stroke-width: 1.25; stroke-dasharray: 3 3; }
+.t-title { font: 600 13px var(--font-body); fill: var(--fg); }
+.t-sub { font: 400 12px var(--font-body); fill: var(--muted); }
+.t-mono { font: 400 11.5px var(--font-mono); fill: var(--muted); }
+.t-note { font: 400 11px var(--font-body); fill: var(--muted); }
+.mid { text-anchor: middle; }
+.flow { fill: none; stroke-width: 2; }
+.f-mgmt { stroke: var(--c-mgmt); } .f-egress { stroke: var(--c-egress); } .f-aws { stroke: var(--c-aws); }
+.f-cluster { stroke: var(--c-cluster); } .f-client { stroke: var(--c-client); } .f-domain { stroke: var(--c-domain); }
+.f-gap { stroke: var(--c-gap); stroke-dasharray: 6 5; }
+.pipe-outer { fill: none; stroke: var(--c-tunnel); stroke-width: 12; stroke-linecap: round; }
+.pipe-inner { fill: none; stroke: var(--surface); stroke-width: 7; stroke-linecap: round; }
+.mk-mgmt { fill: var(--c-mgmt); } .mk-egress { fill: var(--c-egress); } .mk-aws { fill: var(--c-aws); }
+.mk-cluster { fill: var(--c-cluster); } .mk-client { fill: var(--c-client); } .mk-domain { fill: var(--c-domain); }
+.mk-gap { fill: var(--c-gap); }
+.badge circle { stroke: var(--surface); stroke-width: 2.5; }
+.badge text { font: 600 12px var(--font-mono); fill: var(--on-badge); text-anchor: middle; }
+.b-mgmt circle { fill: var(--c-mgmt); } .b-egress circle { fill: var(--c-egress); } .b-aws circle { fill: var(--c-aws); }
+.b-cluster circle { fill: var(--c-cluster); } .b-client circle { fill: var(--c-client); } .b-domain circle { fill: var(--c-domain); }
+.b-tunnel circle { fill: var(--c-tunnel); } .b-gap circle { fill: var(--c-gap); }
+</style>
+<defs>
+<marker id="m-mgmt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-mgmt"/></marker>
+<marker id="m-egress" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-egress"/></marker>
+<marker id="m-aws" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-aws"/></marker>
+<marker id="m-cluster" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-cluster"/></marker>
+<marker id="m-client" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-client"/></marker>
+<marker id="m-domain" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-domain"/></marker>
+<marker id="m-gap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="mk-gap"/></marker>
+</defs>
+<rect class="canvas" x="0" y="0" width="1280" height="840"/>
+
+<rect class="zone z-net" x="16" y="40" width="220" height="784" rx="10"/>
+<text class="zone-label" x="32" y="66">INTERNET</text>
+<rect class="zone z-vpc" x="272" y="40" width="700" height="784" rx="10"/>
+<text class="zone-label" x="288" y="66">AWS VPC 10.0.0.0/16 · US-EAST-1</text>
+<rect class="zone z-hq" x="1008" y="40" width="256" height="784" rx="10"/>
+<text class="zone-label" x="1024" y="66">HQ 10.69.0.0/16</text>
+
+<rect class="box" x="36" y="110" width="180" height="64" rx="6"/>
+<text class="t-title mid" x="126" y="138">GitHub Actions runner</text>
+<text class="t-sub mid" x="126" y="158">per-run /32</text>
+<rect class="box" x="36" y="200" width="180" height="64" rx="6"/>
+<text class="t-title mid" x="126" y="228">Operator workstation</text>
+<text class="t-sub mid" x="126" y="248">per-run /32 · optional</text>
+<rect class="box" x="36" y="606" width="180" height="72" rx="6"/>
+<text class="t-title mid" x="126" y="636">Public HTTPS endpoints</text>
+<text class="t-sub mid" x="126" y="656">AWS APIs · SSM · Defender</text>
+
+<rect class="cluster" x="296" y="96" width="480" height="372" rx="10"/>
+<text class="t-title" x="312" y="122">Failover cluster TCNAW-FSCL01</text>
+<text class="t-sub" x="312" y="140">File server role TCNAW-HAFS01 · continuously available SMB 3 shares</text>
+<rect class="box" x="316" y="156" width="200" height="100" rx="6"/>
+<text class="t-title mid" x="416" y="184">tcnaw-hafs01a</text>
+<text class="t-mono mid" x="416" y="206">10.0.1.10 · .11 · .12</text>
+<text class="t-sub mid" x="416" y="228">us-east-1a · 10.0.0.0/19</text>
+<rect class="box" x="556" y="156" width="200" height="100" rx="6"/>
+<text class="t-title mid" x="656" y="184">tcnaw-hafs02a</text>
+<text class="t-mono mid" x="656" y="206">10.0.33.10 · .11 · .12</text>
+<text class="t-sub mid" x="656" y="228">us-east-1a · 10.0.32.0/19</text>
+<rect class="box" x="316" y="336" width="200" height="100" rx="6"/>
+<text class="t-title mid" x="416" y="364">tcnaw-hafs01b</text>
+<text class="t-mono mid" x="416" y="386">10.0.65.10 · .11 · .12</text>
+<text class="t-sub mid" x="416" y="408">us-east-1b · 10.0.64.0/19</text>
+<rect class="box" x="556" y="336" width="200" height="100" rx="6"/>
+<text class="t-title mid" x="656" y="364">tcnaw-hafs02b</text>
+<text class="t-mono mid" x="656" y="386">10.0.97.10 · .11 · .12</text>
+<text class="t-sub mid" x="656" y="408">us-east-1b · 10.0.96.0/19</text>
+<text class="t-note mid" x="536" y="456">.10 node · .11 cluster name · .12 file server role</text>
+
+<line class="flow f-cluster" x1="518" y1="206" x2="554" y2="206" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<line class="flow f-cluster" x1="518" y1="386" x2="554" y2="386" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<line class="flow f-cluster" x1="416" y1="258" x2="416" y2="334" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<line class="flow f-cluster" x1="656" y1="258" x2="656" y2="334" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<line class="flow f-cluster" x1="518" y1="258" x2="554" y2="334" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<line class="flow f-cluster" x1="554" y1="258" x2="518" y2="334" marker-start="url(#m-cluster)" marker-end="url(#m-cluster)"/>
+<g class="badge b-cluster"><circle cx="536" cy="296" r="11"/><text x="536" y="300">5</text></g>
+
+<rect class="box" x="316" y="520" width="200" height="84" rx="6"/>
+<text class="t-title mid" x="416" y="546">tcnaw-witnes01c</text>
+<text class="t-mono mid" x="416" y="568">10.0.128.0/19 (DHCP)</text>
+<text class="t-sub mid" x="416" y="590">us-east-1c · file share witness</text>
+<rect class="box" x="556" y="520" width="200" height="84" rx="6"/>
+<text class="t-title mid" x="656" y="546">VPC SMB clients</text>
+<text class="t-mono mid" x="656" y="568">10.0.0.0/16</text>
+<text class="t-sub mid" x="656" y="590">any subnet in the VPC</text>
+
+<rect class="awsbox" x="296" y="696" width="480" height="100" rx="8"/>
+<text class="t-title mid" x="536" y="724">AWS link-local services · not filtered by security groups</text>
+<text class="t-mono mid" x="536" y="748">VPC DNS 10.0.0.2:53 · IMDS 169.254.169.254:80</text>
+<text class="t-mono mid" x="536" y="770">Time Sync 169.254.169.123:123 · KMS 169.254.169.250:1688</text>
+
+<rect class="box" x="812" y="372" width="140" height="104" rx="6"/>
+<text class="t-title mid" x="882" y="400">tcnaw-sitegw01</text>
+<text class="t-sub mid" x="882" y="422">WireGuard gateway</text>
+<text class="t-mono mid" x="882" y="444">routes 10.69.0.0/16</text>
+
+<rect class="box" x="1028" y="110" width="216" height="96" rx="6"/>
+<text class="t-title mid" x="1136" y="138">Domain controllers</text>
+<text class="t-mono mid" x="1136" y="162">tcnhq-dc01 10.69.112.4</text>
+<text class="t-mono mid" x="1136" y="184">tcnhq-dc02 10.69.112.5</text>
+<rect class="box" x="1028" y="372" width="216" height="104" rx="6"/>
+<text class="t-title mid" x="1136" y="400">HQ firewall (pfSense)</text>
+<text class="t-sub mid" x="1136" y="422">WireGuard peer</text>
+<text class="t-sub mid" x="1136" y="444">either end opens the tunnel</text>
+<rect class="box" x="1028" y="560" width="216" height="84" rx="6"/>
+<text class="t-title mid" x="1136" y="588">HQ SMB clients</text>
+<text class="t-mono mid" x="1136" y="610">10.69.0.0/16</text>
+
+<line class="flow f-mgmt" x1="216" y1="142" x2="294" y2="142" marker-end="url(#m-mgmt)"/>
+<g class="badge b-mgmt"><circle cx="254" cy="142" r="11"/><text x="254" y="146">1</text></g>
+<line class="flow f-mgmt" x1="216" y1="232" x2="294" y2="232" marker-end="url(#m-mgmt)"/>
+<g class="badge b-mgmt"><circle cx="254" cy="232" r="11"/><text x="254" y="236">2</text></g>
+<polyline class="flow f-egress" points="296,440 254,440 254,642 218,642" marker-end="url(#m-egress)"/>
+<g class="badge b-egress"><circle cx="254" cy="540" r="11"/><text x="254" y="544">3</text></g>
+<line class="flow f-aws" x1="536" y1="468" x2="536" y2="694" marker-end="url(#m-aws)"/>
+<g class="badge b-aws"><circle cx="536" cy="650" r="11"/><text x="536" y="654">4</text></g>
+<line class="flow f-cluster" x1="416" y1="438" x2="416" y2="518" marker-end="url(#m-cluster)"/>
+<g class="badge b-cluster"><circle cx="416" cy="490" r="11"/><text x="416" y="494">6</text></g>
+<line class="flow f-client" x1="636" y1="520" x2="636" y2="438" marker-end="url(#m-client)"/>
+<g class="badge b-client"><circle cx="636" cy="490" r="11"/><text x="636" y="494">7</text></g>
+<line class="flow f-gap" x1="700" y1="520" x2="700" y2="438" marker-end="url(#m-gap)"/>
+<g class="badge b-gap"><circle cx="700" cy="490" r="11"/><text x="700" y="494">G</text></g>
+<line class="flow f-domain" x1="776" y1="404" x2="810" y2="404" marker-end="url(#m-domain)"/>
+<g class="badge b-domain"><circle cx="794" cy="384" r="10"/><text x="794" y="388">8</text></g>
+<line class="flow f-client" x1="812" y1="446" x2="778" y2="446" marker-end="url(#m-client)"/>
+<g class="badge b-client"><circle cx="794" cy="466" r="10"/><text x="794" y="470">7</text></g>
+<line class="pipe-outer" x1="958" y1="424" x2="1022" y2="424"/>
+<line class="pipe-inner" x1="958" y1="424" x2="1022" y2="424"/>
+<line class="flow f-domain" x1="960" y1="420" x2="1020" y2="420"/>
+<line class="flow f-client" x1="960" y1="428" x2="1020" y2="428"/>
+<g class="badge b-tunnel"><circle cx="990" cy="398" r="11"/><text x="990" y="402">9</text></g>
+<line class="flow f-domain" x1="1136" y1="372" x2="1136" y2="208" marker-end="url(#m-domain)"/>
+<g class="badge b-domain"><circle cx="1136" cy="290" r="11"/><text x="1136" y="294">8</text></g>
+<line class="flow f-client" x1="1136" y1="560" x2="1136" y2="478" marker-end="url(#m-client)"/>
+<g class="badge b-client"><circle cx="1136" cy="518" r="11"/><text x="1136" y="522">7</text></g>
+</svg>
