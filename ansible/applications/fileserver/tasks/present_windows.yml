@@ -10,7 +10,7 @@
 #
 # The node scope converges the Administrator-owned SMB baseline and cluster prerequisites. The
 # cluster scope later performs the whole cluster convergence under the cluster service account.
-# The playbook's five inline tasks are outside the cluster play; that play only invokes this scope.
+# The playbook's inline tasks are outside the cluster play; that play only invokes this scope.
 #
 # =========================================================================================== #
 ---
@@ -71,7 +71,7 @@
 
     # endregion -- [ Process: Prepare The File Share Witness Host ] --------------------------- #
 
-# The role serves all five domain members, but only the four nodes join the cluster. Keep cluster
+# The role serves the four nodes and the witness, but only the nodes join the cluster. Keep cluster
 # prerequisites node-scoped while the witness continues through the shared SMB baseline.
 - name: 'MAIN | Prepare The Cluster Nodes For Validation'
   when:
@@ -410,8 +410,7 @@
     #region ------ [ Process: Form The File Server Cluster ] ---------------------------------- #
 
     - name: 'PROCESS | Run The File Server Cluster Formation'
-      # The service-account password is used for the signed/sealed CNO LDAP operation and the
-      # delegation-capable batch logon.
+      # The service account password is used only for the delegation-capable batch logon.
       no_log: true
       register: '__fileserver_cluster__'
 
@@ -464,6 +463,7 @@
         parameters:
           ClusterName: "{{ fileserver_running.cluster.name }}"
           ResourceName: "{{ fileserver_running.cluster.name_resource }}"
+          OwnerGroup: 'Cluster Group'
           RegisterAllProvidersIP: >-
             {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
           HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
@@ -553,6 +553,29 @@
             )
             | join('\n')
           }}
+
+- name: 'MAIN | Converge The File Server Access Point Name Parameters'
+  when:
+    - fileserver_running.execution_scope == 'cluster'
+  block:
+
+    #region ------ [ Process: Converge The File Server Access Point Name Parameters ] -------- #
+
+    - name: 'PROCESS | Converge The File Server Access Point Name Parameters'
+      ansible.windows.win_powershell:
+        depth: 3
+        error_action: 'stop'
+        parameters:
+          ClusterName: "{{ fileserver_running.cluster.name }}"
+          ResourceName: "{{ fileserver_running.cluster.file_server.name }}"
+          OwnerGroup: "{{ fileserver_running.cluster.file_server.name }}"
+          RegisterAllProvidersIP: >-
+            {{ fileserver_running.cluster.name_parameters.register_all_providers_ip }}
+          HostRecordTTL: "{{ fileserver_running.cluster.name_parameters.host_record_ttl }}"
+        script: >-
+          {{ lookup('ansible.builtin.file', 'Set-ClusterNameParameters.ps1') }}
+
+    #endregion --- [ Process: Converge The File Server Access Point Name Parameters ] -------- #
 
 - name: 'MAIN | Read The Clustered File Server Owner'
   when:

@@ -1,0 +1,28 @@
+.zone { stroke: var(--line); stroke-width: 1.5; }
+.z-net { fill: var(--z-net); stroke-dasharray: 7 5; }
+.z-vpc { fill: var(--z-vpc); }
+.z-hq { fill: var(--z-hq); }
+.canvas { fill: var(--surface); }
+.zone-label { font: 600 12px var(--font-body); letter-spacing: 0.08em; fill: var(--muted); }
+.box { fill: var(--surface); stroke: var(--muted); stroke-width: 1.25; }
+.cluster { fill: var(--z-cluster); stroke: var(--c-cluster); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.awsbox { fill: var(--z-aws); stroke: var(--c-aws); stroke-width: 1.25; stroke-dasharray: 3 3; }
+.t-title { font: 600 13px var(--font-body); fill: var(--fg); }
+.t-sub { font: 400 12px var(--font-body); fill: var(--muted); }
+.t-mono { font: 400 11.5px var(--font-mono); fill: var(--muted); }
+.t-note { font: 400 11px var(--font-body); fill: var(--muted); }
+.mid { text-anchor: middle; }
+.flow { fill: none; stroke-width: 2; }
+.f-mgmt { stroke: var(--c-mgmt); } .f-egress { stroke: var(--c-egress); } .f-aws { stroke: var(--c-aws); }
+.f-cluster { stroke: var(--c-cluster); } .f-client { stroke: var(--c-client); } .f-domain { stroke: var(--c-domain); }
+.f-gap { stroke: var(--c-gap); stroke-dasharray: 6 5; }
+.pipe-outer { fill: none; stroke: var(--c-tunnel); stroke-width: 12; stroke-linecap: round; }
+.pipe-inner { fill: none; stroke: var(--surface); stroke-width: 7; stroke-linecap: round; }
+.mk-mgmt { fill: var(--c-mgmt); } .mk-egress { fill: var(--c-egress); } .mk-aws { fill: var(--c-aws); }
+.mk-cluster { fill: var(--c-cluster); } .mk-client { fill: var(--c-client); } .mk-domain { fill: var(--c-domain); }
+.mk-gap { fill: var(--c-gap); }
+.badge circle { stroke: var(--surface); stroke-width: 2.5; }
+.badge text { font: 600 12px var(--font-mono); fill: var(--on-badge); text-anchor: middle; }
+.b-mgmt circle { fill: var(--c-mgmt); } .b-egress circle { fill: var(--c-egress); } .b-aws circle { fill: var(--c-aws); }
+.b-cluster circle { fill: var(--c-cluster); } .b-client circle { fill: var(--c-client); } .b-domain circle { fill: var(--c-domain); }
+.b-tunnel circle { fill: var(--c-tunnel); } .b-gap circle { fill: var(--c-gap); }

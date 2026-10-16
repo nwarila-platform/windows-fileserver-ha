@@ -1,0 +1,18 @@
+:root {
+  --bg: #f4f6f8; --surface: #ffffff; --fg: #18212c; --muted: #566273; --line: #c6ced8; --rule: #e1e6ec;
+  --z-net: #eceff3; --z-vpc: #e8f0f7; --z-hq: #efecf6; --z-cluster: #e1f2ef; --z-aws: #f1efe8;
+  --c-mgmt: #7647c0; --c-egress: #5f6b7b; --c-aws: #8a6a12; --c-cluster: #0c8174; --c-client: #2a7a30;
+  --c-domain: #1d5bbd; --c-tunnel: #2f3945; --c-gap: #b86e00; --on-badge: #ffffff;
+  --font-display: "Segoe UI", "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+  --font-body: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Liberation Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, "SFMono-Regular", Menlo, "Liberation Mono", "DejaVu Sans Mono", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #10151c; --surface: #17202a; --fg: #e3e8ee; --muted: #9ba7b5; --line: #334050; --rule: #232d39;
+    --z-net: #141a22; --z-vpc: #13212f; --z-hq: #1b1829; --z-cluster: #10302b; --z-aws: #1f1d17;
+    --c-mgmt: #b18cf2; --c-egress: #a3afbd; --c-aws: #d9b75a; --c-cluster: #3fcab8; --c-client: #73c677;
+    --c-domain: #73a8ff; --c-tunnel: #cfd7e0; --c-gap: #f2a83c; --on-badge: #0d1117;
+    color-scheme: dark;
+  }
+}

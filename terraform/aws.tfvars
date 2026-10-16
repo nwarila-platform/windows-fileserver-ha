@@ -1775,7 +1775,7 @@ all_systems = [
 
     associate_public_ip = false
   },
-  # The domain-joined witness stands alone in the third Availability Zone.
+  # The domain-joined witness is the cluster's only presence in the third Availability Zone.
   {
     region                     = "us_east_1"
     hostname                   = "tcnaw-witnes01c"
@@ -1867,6 +1867,83 @@ all_systems = [
             from_port                    = 443
             to_port                      = 443
             cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          }
+        ]
+        tags = {}
+      }
+    ]
+
+    associate_public_ip = false
+  },
+  # A domain member outside the cluster that reaches the clustered share the way a user's
+  # machine would. It receives host preparation only, never file-server or cluster work.
+  {
+    region               = "us_east_1"
+    hostname             = "tcnaw-client01c"
+    availability_zone    = "us-east-1c"
+    subnet_id            = "subnet-03a855e712be7b399"
+    key_name             = "nwarila-ec2-key"
+    iam_instance_profile = "nwarila-ec2-profile"
+    aws_kms_alias        = "aws/ebs"
+    ami                  = "ami-04807a1de3f592cc5"
+    # Nothing on this host outlives it, so there is nothing an OS swap would preserve.
+    refresh = false
+    # The client measures the share, so its own stalls must not read as outages.
+    instance_type              = "t3.medium"
+    connection_type            = "ssh"
+    readiness_user             = null
+    readiness_gate             = false
+    readiness_command          = null
+    readiness_script_dir       = null
+    readiness_private_key_path = null
+    imds_hop_limit             = 1
+    set_state                  = null
+
+    tags = {
+      Function = "Windows FS Client"
+      Backup   = false
+    }
+
+    root_block_device = {
+      delete_on_termination = true
+      iops                  = null
+      tags                  = {}
+      throughput            = null
+      volume_type           = "gp3"
+      volume_size           = "30"
+    }
+
+    ebs_block_devices          = []
+    ami_block_device_overrides = []
+
+    network_interfaces = [
+      {
+        description    = "tcnaw-client01c CI firewall"
+        interface_type = null
+        private_ip     = null
+        # The shared Windows domain member group (aws-site-gateway) carries the DC egress.
+        security_groups = ["sg-0993c48714283b534"]
+        # This host-owned group admits no inbound traffic; the separately attached runner group owns management ingress.
+        ingress = []
+        egress = [
+          {
+            description                  = "HTTPS out"
+            ip_protocol                  = "tcp"
+            from_port                    = 443
+            to_port                      = 443
+            cidr_ipv4                    = "0.0.0.0/0"
+            prefix_list_id               = null
+            referenced_security_group_id = null
+          },
+          # The share's address moves between the AZ-a subnets on failover.
+          {
+            description                  = "Clustered SMB to the VPC"
+            ip_protocol                  = "tcp"
+            from_port                    = 445
+            to_port                      = 445
+            cidr_ipv4                    = "10.0.0.0/16"
             prefix_list_id               = null
             referenced_security_group_id = null
           }

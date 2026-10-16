@@ -29,9 +29,10 @@ spec, under `scripts/`:
 |---|---|---|
 | `files/Get-ClusteredFileServerOwner.ps1.stub` | `scripts/Get-ClusteredFileServerOwner.ps1` + `.pester.ps1` | Exact Online clustered file-server role owner for node-local delegation |
 | `files/Set-DomainControllerNamespace.ps1.stub` | `scripts/Set-DomainControllerNamespace.ps1` + `.pester.ps1` | Exact domain-controller NRPT rule (realm forward zone and DC reverse zone) with failure-honest readback |
+| `files/Set-PrestagedClusterNameObject.ps1.stub` | `scripts/Set-PrestagedClusterNameObject.ps1` + `.pester.ps1` | Prestaged cluster name object release with explicit directory binding and two-controller readback |
 | `files/Set-SmbServerHardening.ps1.stub` | `scripts/Set-SmbServerHardening.ps1` + `.pester.ps1` | SMB server configuration against the declared baseline (`fileserver.smb.settings`) |
 | `files/Set-FileServerCluster.ps1.stub` | `scripts/Set-FileServerCluster.ps1` + `.pester.ps1` | Exact caller-declared cluster membership and static addresses |
-| `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Cluster Name DNS registration parameters |
+| `files/Set-ClusterNameParameters.ps1.stub` | `scripts/Set-ClusterNameParameters.ps1` + `.pester.ps1` | Network Name DNS registration parameters (Cluster Name and file-server access point) |
 | `files/Set-ClusterSharedDisks.ps1.stub` | `scripts/Set-ClusterSharedDisks.ps1` + `.pester.ps1` | EBS-identity disk adoption, possible owners, and Online state |
 | `files/Set-ClusteredFileServer.ps1.stub` | `scripts/Set-ClusteredFileServer.ps1` + `.pester.ps1` | Caller-declared file-server role converged by the role's cluster scope: home disk, preferred owners, static IPs, and OR dependency |
 | `files/Set-ClusteredFolderTree.ps1.stub` | `scripts/Set-ClusteredFolderTree.ps1` + `.pester.ps1` | Declared folders, inheritance boundaries, and exact explicit access entries without recursion |
@@ -81,7 +82,7 @@ mutation.
 Defaults (`defaults/main.yml`, merged by the v3 loader into `fileserver_running`) carry product
 opinion and an empty required-input contract: the node execution-scope default, SMB hardening,
 the cluster service account password contract, fixed Windows resource labels,
-Cluster Name resource parameters, share property defaults, and protected principal grants. The
+Network Name resource parameters, share property defaults, and protected principal grants. The
 playbook supplies every deployment-specific value through its anchored cluster declaration and the
 shared `ansible/playbooks/vars/fileserver-shares.yml` declaration: the
 service account; cluster, file-server, and witness identities; node and disk ownership; addresses;
