@@ -195,6 +195,19 @@
         domain_member: "{{ domain_membership }}"  # noqa: var-naming[no-role-prefix]
     #endregion --- [ Tasks: Domain Member ] --------------------------------------------------- #
 
+    #region ------ [ Tasks: Time Source ] ----------------------------------------------------- #
+    # The image ships AllSync; one cluster node used the AWS time service on 2026-10-14.
+    - name: 'PROCESS | Take The Time From The Domain Hierarchy'
+      when: (state | default('present') | string | lower | trim) != 'absent'
+      notify: 'domain-time-restart-required'
+      ansible.windows.win_regedit:
+        data: 'NT5DS'
+        name: 'Type'
+        path: 'HKLM:\SYSTEM\CurrentControlSet\Services\W32Time\Parameters'
+        state: 'present'
+        type: 'string'
+    #endregion --- [ Tasks: Time Source ] ----------------------------------------------------- #
+
     #region ------ [ Tasks: Windows Disk Manager ] -------------------------------------------- #
     # Each Function value names one EBS Multi-Attach volume from terraform/aws.tfvars. The first
     # host in each AZ is its designated preparer. Its partner observes the same attached volume
@@ -216,6 +229,19 @@
     #endregion --- [ Tasks: Windows Disk Manager ] -------------------------------------------- #
 
   #endregion --- [ Tasks ] -------------------------------------------------------------------- #
+
+  #region ------ [ Handlers ] ----------------------------------------------------------------- #
+  handlers:
+    - name: 'Restart the Windows Time service'
+      listen: 'domain-time-restart-required'
+
+      ansible.windows.win_service:
+        dependency_action: 'set'
+        desktop_interact: false
+        force_dependent_services: false
+        name: 'W32Time'
+        state: 'restarted'
+  #endregion --- [ Handlers ] ----------------------------------------------------------------- #
 
   #region ------ [ Post Tasks ] --------------------------------------------------------------- #
   # New-Cluster's RPC/Kerberos bind to the named domain controller triggers a reverse-PTR lookup
