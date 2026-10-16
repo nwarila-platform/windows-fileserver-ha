@@ -10,7 +10,7 @@
 #
 # The node scope converges the Administrator-owned SMB baseline and cluster prerequisites. The
 # cluster scope later performs the whole cluster convergence under the cluster service account.
-# The playbook's five inline tasks are outside the cluster play; that play only invokes this scope.
+# The playbook's inline tasks are outside the cluster play; that play only invokes this scope.
 #
 # =========================================================================================== #
 ---
@@ -71,7 +71,7 @@
 
     # endregion -- [ Process: Prepare The File Share Witness Host ] --------------------------- #
 
-# The role serves all five domain members, but only the four nodes join the cluster. Keep cluster
+# The role serves the four nodes and the witness, but only the nodes join the cluster. Keep cluster
 # prerequisites node-scoped while the witness continues through the shared SMB baseline.
 - name: 'MAIN | Prepare The Cluster Nodes For Validation'
   when:

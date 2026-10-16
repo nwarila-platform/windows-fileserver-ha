@@ -2,18 +2,19 @@
 
 ## There is no static inventory, and that is deliberate
 
-The AWS deploy is **ephemeral**: every run creates five new instances, converges them, and destroys them.
+The AWS deploy is **ephemeral**: every run creates six new instances, converges them, and destroys them.
 Instance ids written into a file here would be wrong the moment the run that produced them ended.
 
 ## `aws_ec2.yml` — one run's instances, describing themselves
 
 The file is in two parts. The first is the only part that is about this repository: the region, the
 four tag filters that select one run's instances — `RepositoryId`, `RunId` and `Repository` from the
-workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and three composed
+workflow's own environment, and `Environment` from `ENVIRONMENT` or `test` — and four composed
 groups. `fileserver_nodes` contains the four cluster nodes, `fileserver_witness` contains the
-domain-joined witness, and overlapping singleton `fileserver_cluster_former` selects the exact Name
-tag `tcnaw-hafs01a`. It is an identity contract, not the first host after sorting. Everything below
-that is carried unchanged by any repository deploying a host this way.
+domain-joined witness, `fileserver_client` contains the domain member outside the cluster that
+reaches the share as a user's machine would, and overlapping singleton `fileserver_cluster_former`
+selects the exact Name tag `tcnaw-hafs01a`. It is an identity contract, not the first host after
+sorting. Everything below that is carried unchanged by any repository deploying a host this way.
 
 Hosts are named by their **Name tag**, which is the hostname Terraform declares, so
 `inventory_hostname` is the system's own name and nothing downstream has to be told it again. Every

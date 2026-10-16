@@ -2,9 +2,10 @@
 # File: 'ansible/playbooks/fileserver-aws.yml'
 # --- [ Description ] ----------------------------------------------------------------------- #
 #
-# Brings five ephemeral EC2 instances through host preparation, forms the declared four-node
+# Brings six ephemeral EC2 instances through host preparation, forms the declared four-node
 # cluster under its service account, adopts both shared disks, publishes the implemented AZ-a
-# clustered data share, and configures its dedicated third-AZ file-share witness.
+# clustered data share, and configures its dedicated third-AZ file-share witness. The sixth, a
+# domain member outside the cluster, receives host preparation only.
 #
 # Runs from the COMPOSED tree only: the workflow overlays this repository onto the pinned
 # ansible-framework and runs this against a dynamic EC2 inventory filtered to one run.
@@ -27,12 +28,14 @@
 
 - name: 'PLAY | Validate The Ephemeral AWS Inventory Contract'
   hosts: 'localhost'
+  any_errors_fatal: true
   tasks:
-    - name: 'INVENTORY | Require The Ratified Five-Instance Shape'
+    - name: 'INVENTORY | Require The Ratified Six-Instance Shape'
       ansible.builtin.assert:
         that:
           - groups['fileserver_nodes'] | default([]) | length == 4
           - groups['fileserver_witness'] | default([]) | length == 1
+          - groups['fileserver_client'] | default([]) | length == 1
           - groups['fileserver_cluster_former'] | default([]) | length == 1
           - groups['fileserver_cluster_former'] | default([]) == ['tcnaw-hafs01a']
           - >-
@@ -44,16 +47,18 @@
             (
               (groups['fileserver_nodes'] | default([]))
               + (groups['fileserver_witness'] | default([]))
+              + (groups['fileserver_client'] | default([]))
             ) | sort
         fail_msg: >-
           Refusing to configure: expected 4 hosts in 'fileserver_nodes', 1 in
-          'fileserver_witness', and only tcnaw-hafs01a in the overlapping
-          'fileserver_cluster_former'; found
-          {{ groups['fileserver_nodes'] | default([]) | length }} and
-          {{ groups['fileserver_witness'] | default([]) | length }}, former hosts
+          'fileserver_witness', 1 in 'fileserver_client', and only tcnaw-hafs01a in the
+          overlapping 'fileserver_cluster_former'; found
+          {{ groups['fileserver_nodes'] | default([]) | length }},
+          {{ groups['fileserver_witness'] | default([]) | length }} and
+          {{ groups['fileserver_client'] | default([]) | length }}, former hosts
           {{ groups['fileserver_cluster_former'] | default([]) }}, and all hosts
           {{ groups['all'] | default([]) | sort }}. The dynamic EC2 inventory must carry exactly
-          the ratified 4 cluster nodes and 1 file-share witness before anything runs.
+          the ratified 4 cluster nodes, 1 file-share witness and 1 client before anything runs.
         quiet: true
 
     # Account-derived values are passed EXPLICITLY on the invocation, never read from the
@@ -76,7 +81,7 @@
 #region ------ [ Play: Configure The Guest ] -------------------------------------------------- #
 
 - name: 'PLAY | Configure The Guest (ephemeral AWS)'
-  hosts: 'fileserver_nodes:fileserver_witness'
+  hosts: 'fileserver_nodes:fileserver_witness:fileserver_client'
   any_errors_fatal: true
   vars:
     domain_realm: 'tcn.trinitytechnicalservices.com'
@@ -234,7 +239,7 @@
 
 #region ------ [ Play: File Server HA Baseline ] ---------------------------------------------- #
 
-- name: 'PLAY | File Server HA Baseline (all five instances, ephemeral AWS)'
+- name: 'PLAY | File Server HA Baseline (cluster nodes and witness, ephemeral AWS)'
   hosts: 'fileserver_nodes:fileserver_witness'
   any_errors_fatal: true
   vars_files:
