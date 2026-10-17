@@ -171,6 +171,8 @@
 !/scripts/Get-ClusteredFileServerOwner.pester.ps1
 !/scripts/Measure-ClusteredSmbShareAccess.pester.ps1
 !/scripts/Measure-ClusteredSmbShareAccess.ps1
+!/scripts/Test-ClusteredSmbFailoverEvidence.pester.ps1
+!/scripts/Test-ClusteredSmbFailoverEvidence.ps1
 !/scripts/Set-ClusterNameParameters.ps1
 !/scripts/Set-ClusterNameParameters.pester.ps1
 !/scripts/Set-ClusterSharedDisks.ps1
