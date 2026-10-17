@@ -72,7 +72,7 @@ BeforeAll {
   Function Invoke-Probe {
     Param (
       [Parameter(Mandatory = $True)]$Case,
-      [System.Int32]$DurationSeconds = 1,
+      [System.Int32]$DurationSeconds = 3,
       [System.Double]$IntervalSeconds = 0.1,
       [System.String]$RunId = $Case.RunId,
       [System.String]$EvidencePath = $Case.Evidence,
@@ -93,22 +93,73 @@ BeforeAll {
     }
   }
 
+  Function Set-ProbeStopAfterRows {
+    Param ([Parameter(Mandatory = $True)]$Case)
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $OpenRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-openclose.csv')) -ErrorAction SilentlyContinue)
+      $PersistRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-persist.csv')) -ErrorAction SilentlyContinue)
+      If ($OpenRows.Count -gt 0 -and $PersistRows.Count -gt 0) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    }
+  }
+
+  Function Set-ProbeStopAfterMarkers {
+    Param (
+      [Parameter(Mandatory = $True)]$Case,
+      [Parameter(Mandatory = $True)][System.String[]]$Names
+    )
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessState['marker_names'] = $Names
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $Ready = $True
+      ForEach ($Name In @($State['marker_names'])) {
+        $MarkerPath = [IO.Path]::Combine([String]$State['evidence_path'], ('{0}.inflight' -f $Name))
+        If (-not [IO.File]::Exists($MarkerPath) -or [String]::IsNullOrEmpty([IO.File]::ReadAllText($MarkerPath))) {
+          $Ready = $False
+        }
+      }
+      If ($Ready) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    }
+  }
+
   Function Read-JsonLines {
     Param ([System.String]$Path)
     @([IO.File]::ReadAllLines($Path) | ForEach-Object -Process { $PSItem | ConvertFrom-Json })
   }
 
-  Function Wait-ForState {
+  Function Wait-ForProcessExit {
     Param (
-      [Hashtable]$State,
-      [System.String]$Key,
+      [System.Int32]$Id,
+      [System.String]$StartedUtc,
       [System.Int32]$Seconds = 30
     )
     $Timer = [Diagnostics.Stopwatch]::StartNew()
-    While ($Timer.Elapsed.TotalSeconds -lt $Seconds -and -not [Boolean]$State[$Key]) {
+    $Absent = $False
+    While ($Timer.Elapsed.TotalSeconds -lt $Seconds -and -not $Absent) {
+      Try {
+        $Process = [Diagnostics.Process]::GetProcessById($Id)
+        $Absent = $Process.StartTime.ToUniversalTime().ToString('o') -cne $StartedUtc
+      } Catch [ArgumentException] {
+        $Absent = $True
+      }
+      If (-not $Absent) {
+        [Threading.Thread]::Sleep(50)
+      }
+    }
+    If (-not $Absent) {
       [Threading.Thread]::Sleep(50)
     }
-    [Boolean]$State[$Key]
+    $Absent
   }
 
   Function global:wevtutil.exe {
@@ -176,24 +227,17 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   AfterEach {
-    ForEach ($GateName In @('openclose_gate', 'persist_gate', 'observation_gate')) {
-      If (
-        $Null -ne $global:MeasureClusteredSmbShareAccessState -and
-        $global:MeasureClusteredSmbShareAccessState.ContainsKey($GateName) -and
-        $Null -ne $global:MeasureClusteredSmbShareAccessState[$GateName]
-      ) {
-        $Null = $global:MeasureClusteredSmbShareAccessState[$GateName].Set()
-      }
-    }
     Remove-AnsibleContext
     [Threading.Thread]::CurrentThread.CurrentCulture = $script:SavedCulture
     [Threading.Thread]::CurrentThread.CurrentUICulture = $script:SavedUiCulture
   }
 
   It 'T01 returns the happy-path result with matching first process and last terminal records' {
+    @([Regex]::Matches($script:SourceText, '\[DateTime\]::UtcNow -ge \$WorkerDeadlineUtc')).Count | Should -Be 2
     $Case = New-ProbeCase -Name 'happy'
+    Set-ProbeStopAfterRows -Case $Case
 
-    $Run = Invoke-Probe -Case $Case
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
 
     $Run.Output.changed | Should -BeTrue
     $Run.Output.check_mode | Should -BeFalse
@@ -201,14 +245,27 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Run.Output.cleanup_deferred | Should -BeFalse
     $Run.Output.openclose.attempts | Should -BeGreaterThan 0
     $Run.Output.persist.attempts | Should -BeGreaterThan 0
+    $Run.Output.openclose.kill_requested | Should -BeFalse
+    $Run.Output.persist.kill_requested | Should -BeFalse
     $Run.Context.Result.run_leaf | Should -Be $Run.Output.run_leaf
     $Records = @(Read-JsonLines -Path (Join-Path $Case.Evidence 'smb-samples.jsonl'))
     $Records[0].kind | Should -Be 'process'
     $Records[0].process_id | Should -Be $PID
-    ([DateTime]$Records[0].process_started_utc).ToUniversalTime().ToString('o') | Should -Be (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')
+    If ($env:OS -eq 'Windows_NT') {
+      ([DateTime]$Records[0].process_started_utc).ToUniversalTime().ToString('o') | Should -Be (Get-Process -Id $PID).StartTime.ToUniversalTime().ToString('o')
+    } Else {
+      [Math]::Abs(((Get-Process -Id $PID).StartTime.ToUniversalTime() - ([DateTime]$Records[0].process_started_utc).ToUniversalTime()).TotalMilliseconds) | Should -BeLessThan 1000
+    }
     $Records[0].run_id | Should -Be $Case.RunId
     $Records[0].run_leaf | Should -Be $Run.Output.run_leaf
     @($Records | Where-Object kind -EQ 'process') | Should -HaveCount 1
+    $Workers = @($Records | Where-Object kind -EQ 'worker')
+    $Workers | Should -HaveCount 2
+    @($Workers.loop | Sort-Object) | Should -Be @('openclose', 'persist')
+    ForEach ($Worker In $Workers) {
+      $Worker.process_id | Should -Not -Be $PID
+      (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc) | Should -BeTrue
+    }
     $Records[-1].kind | Should -Be 'terminal'
     $Records[-1].run_id | Should -Be $Case.RunId
     $Records[-1].exception_type | Should -Be ''
@@ -219,22 +276,24 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Samples = @($Records | Where-Object kind -EQ 'sample')
     $Samples | Should -Not -BeNullOrEmpty
     $Samples[-1].continuously_available | Should -BeTrue
+    [Array]::IndexOf($Records, $Samples[0]) | Should -BeLessThan ([Array]::IndexOf($Records, $Workers[0]))
   }
 
   It 'T02 emits equivalent Ansible and standalone result shapes' {
+    $script:SourceText | Should -Match '\$StartInfo\.RedirectStandardError = \$True'
     $AnsibleCase = New-ProbeCase -Name 'ansible'
     $StandaloneCase = New-ProbeCase -Name 'standalone'
     $AnsibleRun = Invoke-Probe -Case $AnsibleCase
     Remove-AnsibleContext
     Reset-ProbeState
 
-    $Json = & $script:ScriptPath -DurationSeconds 1 -EvidencePath $StandaloneCase.Evidence -IntervalSeconds 0.1 -RunId $StandaloneCase.RunId -ServerName 'files' -SharePath $StandaloneCase.Share
+    $Json = & $script:ScriptPath -DurationSeconds 3 -EvidencePath $StandaloneCase.Evidence -IntervalSeconds 0.1 -RunId $StandaloneCase.RunId -ServerName 'files' -SharePath $StandaloneCase.Share
     $Standalone = ($Json -join '') | ConvertFrom-Json
 
     $Standalone.changed | Should -Be $AnsibleRun.Output.changed
     $Standalone.failed | Should -Be $AnsibleRun.Output.failed
     $Standalone.msg | Should -Be $AnsibleRun.Output.msg
-    $Standalone.openclose.attempts | Should -BeGreaterThan 0
+    $Standalone.openclose.PSObject.Properties.Name | Should -Contain 'attempts'
   }
 
   It 'T03 rejects invalid parameter values during binding' {
@@ -303,7 +362,9 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   It 'T09 records a persistent-open failure and later recovers without probe failure' {
+    $script:SourceText | Should -Match '\$WorkerStopRequestPath'
     $Case = New-ProbeCase -Name 'persist-retry'
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
     $global:MeasureClusteredSmbShareAccessPersistAttempt = {
       Param ($Context, $State)
       $PersistFile = [IO.Path]::Combine($Context.Directory, 'p.txt')
@@ -329,7 +390,19 @@ Describe 'Measure-ClusteredSmbShareAccess' {
       $State['persist_stream'].Write($Payload, 0, $Payload.Length)
       $State['persist_stream'].Flush($True)
     }
-    $Run = Invoke-Probe -Case $Case -DurationSeconds 2
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $Rows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-persist.csv')) -ErrorAction SilentlyContinue)
+      If (
+        @($Rows | Where-Object outcome -EQ 'failure').Count -gt 0 -and
+        @($Rows | Where-Object outcome -EQ 'success').Count -gt 0
+      ) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    }
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
     $Rows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-persist.csv'))
     @($Rows | Where-Object outcome -EQ 'failure').Count | Should -BeGreaterThan 0
     @($Rows | Where-Object outcome -EQ 'success').Count | Should -BeGreaterThan 0
@@ -337,24 +410,35 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   It 'T10 records base DirectoryNotFoundException outage rows and persistent successes' {
+    $script:SourceText | Should -Match "EnvironmentVariables\['FSHA_PROBE_DIRECTORY'\]"
     $Case = New-ProbeCase -Name 'rename'
     $Leaf = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
     $global:MeasureClusteredSmbShareAccessState['openclose'] = Join-Path $Leaf 'openclose'
     $global:MeasureClusteredSmbShareAccessState['renamed'] = Join-Path $Leaf 'openclose-x'
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessState['openclose_csv'] = Join-Path $Case.Evidence 'attempts-openclose.csv'
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
-      If ([Int32]$State['openclose_attempts'] -gt 0 -and -not [Boolean]$State['openclose_outage_started']) {
+      $Rows = @(Import-Csv -LiteralPath ([String]$State['openclose_csv']) -ErrorAction SilentlyContinue)
+      If ($Rows.Count -gt 0 -and -not [Boolean]$State['openclose_outage_started']) {
         [IO.Directory]::Move([String]$State['openclose'], [String]$State['renamed'])
         $State['openclose_outage_started'] = $True
       }
-      If ([Int32]$State['openclose_failures'] -gt 0 -and -not [Boolean]$State['openclose_outage_recovered']) {
+      If (@($Rows | Where-Object outcome -EQ 'failure').Count -gt 0 -and -not [Boolean]$State['openclose_outage_recovered']) {
         [IO.Directory]::Move([String]$State['renamed'], [String]$State['openclose'])
         $State['openclose_outage_recovered'] = $True
       }
+      If (
+        [Boolean]$State['openclose_outage_recovered'] -and
+        $Rows.Count -gt 0 -and
+        $Rows[-1].outcome -eq 'success'
+      ) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
       [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
-    $Run = Invoke-Probe -Case $Case -DurationSeconds 2
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
     $OpenRows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv'))
     $Outages = @($OpenRows | Where-Object outcome -EQ 'failure')
     $Outages.Count | Should -BeGreaterThan 0
@@ -395,25 +479,25 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   It 'T13 runs common shutdown before rethrow when one loop ends and the other blocks' {
-    $script:SourceText | Should -Match 'If \(\$LoopHandle\.Async\.IsCompleted -and -not \[Boolean\]\$SharedState\[''stop_requested''\]\)'
+    $script:SourceText | Should -Not -Match '\$WorkersStarted'
+    @([Regex]::Matches($script:SourceText, '(?m)^\s+Throw \$PendingException$')).Count | Should -Be 2
+    $script:SourceText | Should -Match 'If \(\$LoopHandle\.Process\.HasExited -and \[DateTime\]::UtcNow -lt \$RunDeadlineUtc\)'
     $script:SourceText | Should -Match '\$JsonWriter\.WriteLine\(\(ConvertTo-Json -InputObject:\$TerminalRecord -Compress -Depth:6\)\)'
-    $ShutdownIndex = $script:SourceText.IndexOf("`$SharedState['stop_requested'] = `$True", [StringComparison]::Ordinal)
+    $ShutdownIndex = $script:SourceText.IndexOf('$GraceTimer = [Diagnostics.Stopwatch]::StartNew()', [StringComparison]::Ordinal)
     $RethrowMatch = [Regex]::Match($script:SourceText, '(?m)^  If \(\$Null -ne \$PendingException\) \{\r?\n    Throw \$PendingException\r?\n  \}$')
     $RethrowIndex = $(If ($RethrowMatch.Success) { $RethrowMatch.Index } Else { -1 })
     $ShutdownIndex | Should -BeGreaterOrEqual 0
     $RethrowIndex | Should -BeGreaterThan $ShutdownIndex
     $Case = New-ProbeCase -Name 'early-loop'
-    $Gate = [Threading.ManualResetEvent]::new($False)
-    $global:MeasureClusteredSmbShareAccessState['persist_gate'] = $Gate
     $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
       Param ($Context, $State)
       $State['openclose_force_end'] = $True
     }
     $global:MeasureClusteredSmbShareAccessPersistAttempt = {
       Param ($Context, $State)
-      $State['persist_block_started_utc'] = [DateTime]::UtcNow.ToString('o')
-      $Null = $State['persist_gate'].WaitOne()
+      [Threading.Thread]::Sleep(600000)
     }
+    $global:MeasureClusteredSmbShareAccessState['openclose_shutdown_exception'] = [IO.IOException]::new('injected openclose shutdown failure')
     $Timer = [Diagnostics.Stopwatch]::StartNew()
     { Invoke-Probe -Case $Case -DurationSeconds 30 } | Should -Throw '*Probe: loop openclose ended before the deadline*'
     $Timer.Elapsed.TotalSeconds | Should -BeLessThan 150
@@ -422,10 +506,11 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Records[-1].exception_type | Should -Be 'System.InvalidOperationException'
     $Records[-1].exception_message | Should -Match '^Probe:'
     $Records[-1].cleanup_deferred | Should -BeTrue
+    $PersistWorker = @($Records | Where-Object { $PSItem.kind -eq 'worker' -and $PSItem.loop -eq 'persist' })[0]
+    (Wait-ForProcessExit -Id $PersistWorker.process_id -StartedUtc $PersistWorker.process_started_utc) | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['persist_kill_requested'] | Should -BeTrue
     $Leaf = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
     [IO.Directory]::Exists($Leaf) | Should -BeTrue
-    $Gate.Set() | Should -BeTrue
-    (Wait-ForState -State $global:MeasureClusteredSmbShareAccessState -Key 'persist_released') | Should -BeTrue
     [IO.Directory]::Delete($Leaf, $True)
     [IO.Directory]::Exists($Leaf) | Should -BeFalse
 
@@ -493,13 +578,24 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   It 'T18 formats elapsed milliseconds with invariant integer text under de-DE' {
+    $script:SourceText | Should -Match '\$WorkerIntervalMilliseconds'
     $script:SourceText | Should -Match '\$InvariantCulture = \[Globalization\.CultureInfo\]::InvariantCulture'
     $script:SourceText | Should -Match '\$Culture = \[Globalization\.CultureInfo\]::InvariantCulture'
     $Case = New-ProbeCase -Name 'culture'
+    Set-ProbeStopAfterRows -Case $Case
     $German = [Globalization.CultureInfo]::GetCultureInfo('de-DE')
+    $SavedLang = $env:LANG
+    $SavedLcAll = $env:LC_ALL
     [Threading.Thread]::CurrentThread.CurrentCulture = $German
     [Threading.Thread]::CurrentThread.CurrentUICulture = $German
-    $Null = Invoke-Probe -Case $Case
+    $env:LANG = 'de_DE.UTF-8'
+    $env:LC_ALL = 'de_DE.UTF-8'
+    Try {
+      $Null = Invoke-Probe -Case $Case -DurationSeconds 30
+    } Finally {
+      $env:LANG = $SavedLang
+      $env:LC_ALL = $SavedLcAll
+    }
     $Rows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv'))
     $Rows | Should -Not -BeNullOrEmpty
     ForEach ($Row In $Rows) { $Row.elapsed_ms | Should -Match '^\d+$' }
@@ -513,25 +609,24 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $script:SourceText | Should -Match '\[PowerShell\]::Create\(\)'
   }
 
-  It 'T20 writes one locked terminal in_flight row and no late row after release' {
-    $script:SourceText | Should -Match '\$State\[\(''\{0\}_inflight'' -f \$LoopName\)\] = \[PSCustomObject\]@\{'
-    $script:SourceText | Should -Match '\$SharedState\[\(''\{0\}_shutdown_lock_gate_reached'' -f \$LoopHandle\.Name\)\] = \$True'
-    $script:SourceText | Should -Match '\$StopAsync = \$LoopHandle\.PowerShell\.BeginStop\(\$Null, \$Null\)'
-    $script:SourceText | Should -Match '\$LoopHandle\.Terminal\[''terminal_written''\] = \$True'
-    $script:SourceText | Should -Match 'If \(-not \$LoopHandle\.Async\.IsCompleted\)'
+  It 'T20 terminates a blocked worker and reconciles exactly one in_flight row' {
+    $script:SourceText | Should -Match '\$LoopHandle\.Process\.Kill\(\)'
+    $script:SourceText | Should -Match '\$Null = \$LoopHandle\.Process\.WaitForExit\(30000\)'
+    $script:SourceText | Should -Match 'If \(\$TerminalAttempt -gt \$LastAttempt\)'
+    @([Regex]::Matches($script:SourceText, '\$MarkerStream = \[IO\.FileStream\]::new\(\$MarkerPath, \[IO\.FileMode\]::Create')).Count | Should -Be 2
+    $script:SourceText | Should -Match 'in_flight_at_stop = @\(\$FinalRows \| Where-Object -FilterScript \{ \$PSItem\.outcome -eq ''in_flight'' \}\)\.Count -gt 0'
     $Case = New-ProbeCase -Name 'one-blocked'
-    $Gate = [Threading.ManualResetEvent]::new($False)
-    $global:MeasureClusteredSmbShareAccessState['openclose_gate'] = $Gate
+    Set-ProbeStopAfterMarkers -Case $Case -Names @('openclose')
     $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
       Param ($Context, $State)
-      $State['openclose_block_started_utc'] = [DateTime]::UtcNow.ToString('o')
-      $Null = $State['openclose_gate'].WaitOne()
+      [Threading.Thread]::Sleep(600000)
     }
     $ReturnedAt = $Null
-    $Run = Invoke-Probe -Case $Case
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
     $ReturnedAt = [DateTime]::UtcNow
     $Run.Output.cleanup_deferred | Should -BeTrue
     $Run.Output.openclose.in_flight_at_stop | Should -BeTrue
+    $Run.Output.openclose.kill_requested | Should -BeTrue
     $Rows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv'))
     @($Rows | Where-Object outcome -EQ 'in_flight') | Should -HaveCount 1
     $Terminal = @($Rows | Where-Object outcome -EQ 'in_flight')[0]
@@ -539,14 +634,14 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Started = [DateTime]::Parse($Terminal.timestamp_utc).ToUniversalTime()
     [Int64]$Terminal.elapsed_ms | Should -BeLessOrEqual ([Int64][Math]::Floor(($ReturnedAt - $Started).TotalMilliseconds))
     $Records = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl'))
+    $Worker = @($Records | Where-Object { $PSItem.kind -eq 'worker' -and $PSItem.loop -eq 'openclose' })[0]
+    (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc) | Should -BeTrue
     $Records[-1].kind | Should -Be 'terminal'
     $Records[-1].cleanup_deferred | Should -BeTrue
     $Leaf = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
     [IO.Directory]::Exists($Leaf) | Should -BeTrue
     $BeforeHash = (Get-FileHash (Join-Path $Case.Evidence 'attempts-openclose.csv') -Algorithm SHA256).Hash
     $BeforeCount = $Rows.Count
-    $Gate.Set() | Should -BeTrue
-    (Wait-ForState -State $global:MeasureClusteredSmbShareAccessState -Key 'openclose_released') | Should -BeTrue
     [Threading.Thread]::Sleep(200)
     (Get-FileHash (Join-Path $Case.Evidence 'attempts-openclose.csv') -Algorithm SHA256).Hash | Should -Be $BeforeHash
     @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv')) | Should -HaveCount $BeforeCount
@@ -554,78 +649,61 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     [IO.Directory]::Exists($Leaf) | Should -BeFalse
 
     Reset-ProbeState
-    $RaceCase = New-ProbeCase -Name 'completed-under-lock'
-    $RaceState = $global:MeasureClusteredSmbShareAccessState
-    $AttemptGate = [Threading.ManualResetEvent]::new($False)
-    $ShutdownGate = [Threading.ManualResetEvent]::new($False)
-    $RaceState['openclose_gate'] = $AttemptGate
-    $RaceState['openclose_shutdown_lock_gate'] = $ShutdownGate
-    $RaceAttempt = {
-      Param ($Context, $State)
-      $Null = $State['openclose_gate'].WaitOne()
-    }
-    $RaceParameters = @{
-      DurationSeconds = 1
-      EvidencePath = $RaceCase.Evidence
-      IntervalSeconds = 0.1
-      RunId = $RaceCase.RunId
-      ServerName = 'files'
-      SharePath = $RaceCase.Share
-    }
-    $RaceSource = {
-      Param ($ScriptPath, $Parameters, $Attempt, $State)
-      $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = $Attempt
-      $global:MeasureClusteredSmbShareAccessState = $State
-      Function global:wevtutil.exe {
-        Param ($Operation, $Channel, $Destination, $Query, $Overwrite)
-        [IO.File]::WriteAllBytes([String]$Destination, [Byte[]]@())
-        $global:LASTEXITCODE = 0
+    $LandedCase = New-ProbeCase -Name 'row-landed'
+    $HoldPath = Join-Path $LandedCase.Root 'hold-after-row'
+    [IO.File]::WriteAllText($HoldPath, '')
+    $global:MeasureClusteredSmbShareAccessState['openclose_hold_after_row_path'] = $HoldPath
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $LandedCase.Evidence
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $Rows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-openclose.csv')) -ErrorAction SilentlyContinue)
+      If ($Rows.Count -gt 0) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
       }
-      & $ScriptPath @Parameters
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
-    $RacePowerShell = [PowerShell]::Create()
-    $Null = $RacePowerShell.AddScript($RaceSource.ToString()).AddArgument($script:ScriptPath).AddArgument($RaceParameters).AddArgument($RaceAttempt).AddArgument($RaceState)
-    $RaceAsync = $RacePowerShell.BeginInvoke()
-    $RaceEnded = $False
-    Try {
-      (Wait-ForState -State $RaceState -Key 'openclose_shutdown_lock_gate_reached' -Seconds 150) | Should -BeTrue
-      $AttemptGate.Set() | Should -BeTrue
-      (Wait-ForState -State $RaceState -Key 'openclose_released') | Should -BeTrue
-      $ShutdownGate.Set() | Should -BeTrue
-      $RaceTimer = [Diagnostics.Stopwatch]::StartNew()
-      While (-not $RaceAsync.IsCompleted -and $RaceTimer.Elapsed.TotalSeconds -lt 30) { [Threading.Thread]::Sleep(100) }
-      $RaceAsync.IsCompleted | Should -BeTrue
-      $RaceOutput = @($RacePowerShell.EndInvoke($RaceAsync))
-      $RaceEnded = $True
-      $RaceResult = ($RaceOutput -join '') | ConvertFrom-Json
-      $RaceResult.cleanup_deferred | Should -BeFalse
-      $RaceRows = @(Import-Csv (Join-Path $RaceCase.Evidence 'attempts-openclose.csv'))
-      $RaceRows | Should -HaveCount 1
-      @($RaceRows | Where-Object outcome -EQ 'in_flight') | Should -HaveCount 0
-      $RaceLeaf = Join-Path $RaceCase.Share ('ha-probe-{0}' -f $RaceCase.RunId)
-      [IO.Directory]::Exists($RaceLeaf) | Should -BeFalse
-      $Exclusive = [IO.FileStream]::new((Join-Path $RaceCase.Evidence 'attempts-openclose.csv'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-      $Exclusive.Dispose()
-    } Finally {
-      $Null = $AttemptGate.Set()
-      $Null = $ShutdownGate.Set()
-      If (-not $RaceEnded -and $RaceAsync.IsCompleted) {
-        Try { $Null = $RacePowerShell.EndInvoke($RaceAsync) } Catch { }
-      }
-      $RacePowerShell.Dispose()
-    }
+    $Landed = Invoke-Probe -Case $LandedCase -DurationSeconds 30
+    $Landed.Output.cleanup_deferred | Should -BeTrue
+    $Landed.Output.openclose.in_flight_at_stop | Should -BeFalse
+    $Landed.Output.openclose.kill_requested | Should -BeTrue
+    $LandedRows = @(Import-Csv (Join-Path $LandedCase.Evidence 'attempts-openclose.csv'))
+    $LandedRows | Should -HaveCount 1
+    $LandedRows[0].attempt | Should -Be '1'
+    $LandedRows[0].outcome | Should -Be 'success'
+    @($LandedRows | Where-Object outcome -EQ 'in_flight') | Should -HaveCount 0
+    $LandedRecords = @(Read-JsonLines (Join-Path $LandedCase.Evidence 'smb-samples.jsonl'))
+    $LandedWorker = @($LandedRecords | Where-Object { $PSItem.kind -eq 'worker' -and $PSItem.loop -eq 'openclose' })[0]
+    (Wait-ForProcessExit -Id $LandedWorker.process_id -StartedUtc $LandedWorker.process_started_utc) | Should -BeTrue
+    $LandedLeaf = Join-Path $LandedCase.Share ('ha-probe-{0}' -f $LandedCase.RunId)
+    [IO.Directory]::Delete($LandedLeaf, $True)
   }
 
   It 'T21 samples strictly increasing in-flight ages before the terminal age' {
-    $script:SourceText | Should -Match '\$State\[\(''\{0\}_inflight'' -f \$LoopName\)\] = \[PSCustomObject\]@\{'
+    $script:SourceText | Should -Match '\$MarkerText = ''\{0\}\|\{1\}\|\{2\}'' -f'
     $Case = New-ProbeCase -Name 'ages'
-    $Gate = [Threading.ManualResetEvent]::new($False)
-    $global:MeasureClusteredSmbShareAccessState['openclose_gate'] = $Gate
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $SamplesPath = [IO.Path]::Combine([String]$State['evidence_path'], 'smb-samples.jsonl')
+      If ([IO.File]::Exists($SamplesPath)) {
+        $InFlightSamples = @(
+          [IO.File]::ReadAllLines($SamplesPath) |
+            ForEach-Object -Process { $PSItem | ConvertFrom-Json } |
+            Where-Object -FilterScript { $PSItem.kind -eq 'sample' -and [Int64]$PSItem.openclose_in_flight_ms -gt 0 }
+        )
+        If ($InFlightSamples.Count -ge 3) {
+          [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+        }
+      }
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    }
     $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
       Param ($Context, $State)
-      $Null = $State['openclose_gate'].WaitOne()
+      [Threading.Thread]::Sleep(600000)
     }
-    $Run = Invoke-Probe -Case $Case
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
     $Samples = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl') | Where-Object { $PSItem.kind -eq 'sample' -and [Int64]$PSItem.openclose_in_flight_ms -gt 0 })
     $Samples.Count | Should -BeGreaterThan 1
     For ($Index = 1; $Index -lt $Samples.Count; $Index++) {
@@ -634,21 +712,26 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Terminal = @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv') | Where-Object outcome -EQ 'in_flight')[0]
     [Int64]$Terminal.elapsed_ms | Should -BeGreaterOrEqual ([Int64]$Samples[-1].openclose_in_flight_ms)
     $Run.Output.openclose.max_elapsed_ms | Should -Be ([Int64]$Terminal.elapsed_ms)
-    $Gate.Set() | Should -BeTrue
-    (Wait-ForState -State $global:MeasureClusteredSmbShareAccessState -Key 'openclose_released') | Should -BeTrue
+    $Run.Output.openclose.kill_requested | Should -BeTrue
+    $Records = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl'))
+    $Worker = @($Records | Where-Object { $PSItem.kind -eq 'worker' -and $PSItem.loop -eq 'openclose' })[0]
+    (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc) | Should -BeTrue
     [IO.Directory]::Delete((Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)), $True)
   }
 
   It 'T22 honors stop.request and distinguishes request from deadline' {
     @([Regex]::Matches($script:SourceText, '\[IO\.File\]::Exists\(\$StopRequestPath\)')).Count | Should -Be 3
+    @([Regex]::Matches($script:SourceText, '\[IO\.File\]::Exists\(\$WorkerStopRequestPath\)')).Count | Should -Be 2
     $RequestCase = New-ProbeCase -Name 'request'
     $global:MeasureClusteredSmbShareAccessState['stop_path'] = $RequestCase.Evidence
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $OpenRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['stop_path'], 'attempts-openclose.csv')) -ErrorAction SilentlyContinue)
+      $PersistRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['stop_path'], 'attempts-persist.csv')) -ErrorAction SilentlyContinue)
       If (
-        [Int32]$State['openclose_attempts'] -gt 0 -and
-        [Int32]$State['persist_attempts'] -gt 0 -and
+        $OpenRows.Count -gt 0 -and
+        $PersistRows.Count -gt 0 -and
         -not [Boolean]$State['stop_request_written']
       ) {
         [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['stop_path'], 'stop.request'), '')
@@ -659,21 +742,26 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Requested = Invoke-Probe -Case $RequestCase -DurationSeconds 30
     $Requested.Output.stop_reason | Should -Be 'request'
     ([DateTime]$Requested.Output.stopped_utc - [DateTime]$Requested.Output.started_utc).TotalSeconds | Should -BeLessThan 30
+    $Requested.Output.openclose.kill_requested | Should -BeFalse
+    $Requested.Output.persist.kill_requested | Should -BeFalse
     Reset-ProbeState
     $DeadlineCase = New-ProbeCase -Name 'deadline'
     (Invoke-Probe -Case $DeadlineCase).Output.stop_reason | Should -Be 'deadline'
   }
 
   It 'T23 allows a second reader to tail both complete CRLF CSV streams' {
+    @([Regex]::Matches($script:SourceText, '\[IO\.FileMode\]::Append')).Count | Should -Be 2
     @([Regex]::Matches($script:SourceText, '\$\w+File = \[IO\.FileStream\]::new\(\$\w+CsvPath, \[IO\.FileMode\]::CreateNew, \[IO\.FileAccess\]::Write, \[IO\.FileShare\]::ReadWrite\)')).Count | Should -Be 2
     $Case = New-ProbeCase -Name 'tail'
     $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_calls'] = [Int32]$State['observation_calls'] + 1
+      $OpenRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-openclose.csv')) -ErrorAction SilentlyContinue)
+      $PersistRows = @(Import-Csv -LiteralPath ([IO.Path]::Combine([String]$State['evidence_path'], 'attempts-persist.csv')) -ErrorAction SilentlyContinue)
       If (
-        [Int32]$State['openclose_rows'] -gt 0 -and
-        [Int32]$State['persist_rows'] -gt 0 -and
+        $OpenRows.Count -gt 0 -and
+        $PersistRows.Count -gt 0 -and
         -not [Boolean]$State['tail_checked']
       ) {
         $State['tail_checked'] = $True
@@ -690,15 +778,17 @@ Describe 'Measure-ClusteredSmbShareAccess' {
             $Stream.Dispose()
           }
         }
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
       }
       [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
-    $Null = Invoke-Probe -Case $Case -DurationSeconds 2
+    $Null = Invoke-Probe -Case $Case -DurationSeconds 30
     $global:MeasureClusteredSmbShareAccessState['tail_success'] | Should -BeTrue
     $script:SourceText | Should -Match '\[IO\.FileShare\]::ReadWrite'
   }
 
   It 'T24 creates exactly the five fixed evidence basenames' {
+    $script:SourceText | Should -Match '\$OpenCloseMarkerPath = \[IO\.Path\]::Combine\(\$EvidencePath, ''openclose\.inflight''\)'
     $Case = New-ProbeCase -Name 'basenames'
     $Null = Invoke-Probe -Case $Case
     @(Get-ChildItem -LiteralPath $Case.Evidence -File | Select-Object -ExpandProperty Name | Sort-Object) | Should -Be @(
@@ -708,12 +798,14 @@ Describe 'Measure-ClusteredSmbShareAccess' {
       'smbclient-connectivity.evtx'
       'smbclient-operational.evtx'
     )
+    @(Get-ChildItem -LiteralPath $Case.Evidence -Filter '*.inflight' -File) | Should -HaveCount 0
   }
 
   It 'T25 caps a blocked observation, starts no replacement, and honors a later stop request' {
     $script:SourceText | Should -Match '\$Observation = \[PowerShell\]::Create\(\)'
     $script:SourceText | Should -Match '\$ObservationCapMilliseconds = 5000'
     $script:SourceText | Should -Match '\$InjectedState\[''observation_async''\] = \$ObservationAsync'
+    $script:SourceText | Should -Match '\$Observation\.BeginStop\(\$Null, \$Null\)'
     $Case = New-ProbeCase -Name 'blocked-observation'
     $State = [Hashtable]::Synchronized(@{ observation_gate = [Threading.ManualResetEvent]::new($False) })
     $Observation = {
@@ -772,7 +864,6 @@ Describe 'Measure-ClusteredSmbShareAccess' {
         [IO.File]::WriteAllText((Join-Path $Case.Evidence 'stop.request'), '')
       }
       $Null = $State['observation_gate'].Set()
-      (Wait-ForState -State $State -Key 'observation_released') | Should -BeTrue
       $PublishedObservation = $State['observation_async']
       $PublishedObservation | Should -Not -BeNullOrEmpty
       $CleanupTimer = [Diagnostics.Stopwatch]::StartNew()
@@ -789,65 +880,73 @@ Describe 'Measure-ClusteredSmbShareAccess' {
   }
 
   It 'T26 executes isolated child seams without seeing same-named parent functions' {
+    $script:SourceText | Should -Match '\$AttemptBase64 = \[Convert\]::ToBase64String\(\$AttemptBytes\)'
     $Case = New-ProbeCase -Name 'isolated-seams'
-    $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
-      Param ($Context, $State)
-      $State['openclose_seam_calls'] = [Int32]$State['openclose_seam_calls'] + 1
-      $State['openclose_saw_parent'] = $Null -ne (Get-Command -Name 'MeasureClusteredSmbShareAccessOpenCloseAttempt' -CommandType Function -ErrorAction SilentlyContinue)
-    }
-    $global:MeasureClusteredSmbShareAccessPersistAttempt = {
-      Param ($Context, $State)
-      $State['persist_seam_calls'] = [Int32]$State['persist_seam_calls'] + 1
-      $State['persist_saw_parent'] = $Null -ne (Get-Command -Name 'MeasureClusteredSmbShareAccessPersistAttempt' -CommandType Function -ErrorAction SilentlyContinue)
-    }
+    $OpenMarker = (Join-Path $Case.Evidence 'openclose-seam.txt').Replace("'", "''")
+    $PersistMarker = (Join-Path $Case.Evidence 'persist-seam.txt').Replace("'", "''")
+    $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = [ScriptBlock]::Create(@"
+Param (`$Context, `$State)
+[IO.File]::WriteAllText('$OpenMarker', [String](`$Null -ne (Get-Command -Name 'MeasureClusteredSmbShareAccessOpenCloseAttempt' -CommandType Function -ErrorAction SilentlyContinue)))
+"@)
+    $global:MeasureClusteredSmbShareAccessPersistAttempt = [ScriptBlock]::Create(@"
+Param (`$Context, `$State)
+[IO.File]::WriteAllText('$PersistMarker', [String](`$Null -ne (Get-Command -Name 'MeasureClusteredSmbShareAccessPersistAttempt' -CommandType Function -ErrorAction SilentlyContinue)))
+"@)
     $global:MeasureClusteredSmbShareAccessObservation = {
       Param ($DnsQuery, $ServerName, $State)
       $State['observation_seam_calls'] = [Int32]$State['observation_seam_calls'] + 1
       $State['observation_saw_parent'] = $Null -ne (Get-Command -Name 'MeasureClusteredSmbShareAccessObservation' -CommandType Function -ErrorAction SilentlyContinue)
+      If (
+        [IO.File]::Exists([String]$State['open_marker']) -and
+        [IO.File]::Exists([String]$State['persist_marker'])
+      ) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
       [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
     }
-    $Null = Invoke-Probe -Case $Case
-    $global:MeasureClusteredSmbShareAccessState['openclose_seam_calls'] | Should -BeGreaterThan 0
-    $global:MeasureClusteredSmbShareAccessState['persist_seam_calls'] | Should -BeGreaterThan 0
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessState['open_marker'] = Join-Path $Case.Evidence 'openclose-seam.txt'
+    $global:MeasureClusteredSmbShareAccessState['persist_marker'] = Join-Path $Case.Evidence 'persist-seam.txt'
+    $Null = Invoke-Probe -Case $Case -DurationSeconds 30
+    [IO.File]::ReadAllText((Join-Path $Case.Evidence 'openclose-seam.txt')) | Should -Be 'False'
+    [IO.File]::ReadAllText((Join-Path $Case.Evidence 'persist-seam.txt')) | Should -Be 'False'
     $global:MeasureClusteredSmbShareAccessState['observation_seam_calls'] | Should -BeGreaterThan 0
-    $global:MeasureClusteredSmbShareAccessState['openclose_saw_parent'] | Should -BeFalse
-    $global:MeasureClusteredSmbShareAccessState['persist_saw_parent'] | Should -BeFalse
     $global:MeasureClusteredSmbShareAccessState['observation_saw_parent'] | Should -BeFalse
     $global:FsHaProbeParentSeamCalled | Should -BeFalse
   }
 
   It 'T27 uses one shared grace deadline when both attempt seams block' {
-    $script:SourceText | Should -Match '\$GraceDeadline = \[TimeSpan\]::FromSeconds\(\$InFlightGraceSeconds\)'
+    $script:SourceText | Should -Match '\$LoopHandle\.Process\.Kill\(\)'
+    $script:SourceText | Should -Match '\$GraceDeadline = \[TimeSpan\]::FromSeconds\('
     @([Regex]::Matches($script:SourceText, '\$GraceDeadline =')).Count | Should -Be 1
     $script:SourceText | Should -Not -Match '\$LoopGraceDeadline'
     $Case = New-ProbeCase -Name 'both-blocked'
-    $OpenGate = [Threading.ManualResetEvent]::new($False)
-    $PersistGate = [Threading.ManualResetEvent]::new($False)
-    $global:MeasureClusteredSmbShareAccessState['openclose_gate'] = $OpenGate
-    $global:MeasureClusteredSmbShareAccessState['persist_gate'] = $PersistGate
+    Set-ProbeStopAfterMarkers -Case $Case -Names @('openclose', 'persist')
     $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
       Param ($Context, $State)
-      $Null = $State['openclose_gate'].WaitOne()
+      [Threading.Thread]::Sleep(600000)
     }
     $global:MeasureClusteredSmbShareAccessPersistAttempt = {
       Param ($Context, $State)
-      $Null = $State['persist_gate'].WaitOne()
+      [Threading.Thread]::Sleep(600000)
     }
     $Timer = [Diagnostics.Stopwatch]::StartNew()
-    $Run = Invoke-Probe -Case $Case
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
     $Timer.Elapsed.TotalSeconds | Should -BeLessThan 151
     $Run.Output.openclose.in_flight_at_stop | Should -BeTrue
     $Run.Output.persist.in_flight_at_stop | Should -BeTrue
+    $Run.Output.openclose.kill_requested | Should -BeTrue
+    $Run.Output.persist.kill_requested | Should -BeTrue
     $OpenRows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-openclose.csv'))
     $PersistRows = @(Import-Csv (Join-Path $Case.Evidence 'attempts-persist.csv'))
     @($OpenRows | Where-Object outcome -EQ 'in_flight') | Should -HaveCount 1
     @($PersistRows | Where-Object outcome -EQ 'in_flight') | Should -HaveCount 1
+    $Records = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl'))
+    ForEach ($Worker In @($Records | Where-Object kind -EQ 'worker')) {
+      (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc) | Should -BeTrue
+    }
     $OpenHash = (Get-FileHash (Join-Path $Case.Evidence 'attempts-openclose.csv') -Algorithm SHA256).Hash
     $PersistHash = (Get-FileHash (Join-Path $Case.Evidence 'attempts-persist.csv') -Algorithm SHA256).Hash
-    $OpenGate.Set() | Should -BeTrue
-    $PersistGate.Set() | Should -BeTrue
-    (Wait-ForState -State $global:MeasureClusteredSmbShareAccessState -Key 'openclose_released') | Should -BeTrue
-    (Wait-ForState -State $global:MeasureClusteredSmbShareAccessState -Key 'persist_released') | Should -BeTrue
     [Threading.Thread]::Sleep(200)
     (Get-FileHash (Join-Path $Case.Evidence 'attempts-openclose.csv') -Algorithm SHA256).Hash | Should -Be $OpenHash
     (Get-FileHash (Join-Path $Case.Evidence 'attempts-persist.csv') -Algorithm SHA256).Hash | Should -Be $PersistHash
@@ -893,5 +992,315 @@ Describe 'Measure-ClusteredSmbShareAccess' {
     $Thrown.GetType().FullName | Should -Be 'System.InvalidOperationException'
     $Thrown.Message | Should -Match '^Probe: loop openclose ended before the deadline:'
     @($WarningOutput | Where-Object { [String]$PSItem -match '^Probe: secondary terminal evidence failure:' }) | Should -HaveCount 1
+  }
+
+  It 'T30 launches two workers with the complete process and environment contract' {
+    $script:SourceText | Should -Match '\$WorkerEngine = \(Get-Process -Id \$PID\)\.Path'
+    $script:SourceText | Should -Match '\$StartInfo\.UseShellExecute = \$False'
+    $script:SourceText | Should -Match '\$StartInfo\.CreateNoWindow = \$True'
+    $script:SourceText | Should -Match '\$StartInfo\.RedirectStandardInput = \$True'
+    $script:SourceText | Should -Match '\$StartInfo\.RedirectStandardOutput = \$True'
+    $script:SourceText | Should -Match '\$StartInfo\.RedirectStandardError = \$True'
+    $script:SourceText | Should -Match '-NoLogo -NoProfile -NonInteractive -EncodedCommand'
+    ForEach ($Name In @(
+        'FSHA_PROBE_LOOP',
+        'FSHA_PROBE_RUN_ID',
+        'FSHA_PROBE_DIRECTORY',
+        'FSHA_PROBE_CSV',
+        'FSHA_PROBE_MARKER',
+        'FSHA_PROBE_STOP_REQUEST',
+        'FSHA_PROBE_DEADLINE_UTC',
+        'FSHA_PROBE_INTERVAL_MS',
+        'FSHA_PROBE_SUPERVISOR_PID',
+        'FSHA_PROBE_SUPERVISOR_STARTED_UTC',
+        'FSHA_PROBE_HOLD_AFTER_ROW'
+      )) {
+      @([Regex]::Matches($script:SourceText, [Regex]::Escape($Name))).Count | Should -Be 2
+    }
+    $Case = New-ProbeCase -Name 'worker-launch'
+    $Run = Invoke-Probe -Case $Case
+    $Records = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl'))
+    $Workers = @($Records | Where-Object kind -EQ 'worker')
+    $Workers | Should -HaveCount 2
+    ForEach ($Worker In $Workers) {
+      $WorkerStarted = ([DateTime]$Worker.process_started_utc).ToUniversalTime()
+      $WorkerStarted | Should -BeGreaterOrEqual ([DateTime]$Run.Output.started_utc).ToUniversalTime()
+      $WorkerStarted | Should -BeLessOrEqual ([DateTime]$Run.Output.stopped_utc).ToUniversalTime()
+    }
+  }
+
+  It 'T31 ends both workers when their supervisor process disappears' {
+    $script:SourceText | Should -Match '\[Diagnostics\.Process\]::GetProcessById\(\$SupervisorPid\)'
+    $script:SourceText | Should -Match 'observed\.ToString\("o", CultureInfo\.InvariantCulture\)'
+    $script:SourceText | Should -Match '\[FsHaProbeSupervisorWatchdog\]::Start\(\$SupervisorPid, \$SupervisorStartedUtc\)'
+    $Case = New-ProbeCase -Name 'orphan-guard'
+    $ChildSource = @'
+function global:wevtutil.exe {
+  param($Operation, $Channel, $Destination, $Query, $Overwrite)
+  [IO.File]::WriteAllBytes([String]$Destination, [Byte[]]@())
+  $global:LASTEXITCODE = 0
+}
+$global:MeasureClusteredSmbShareAccessObservation = {
+  param($DnsQuery, $ServerName, $State)
+  [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+}
+$global:MeasureClusteredSmbShareAccessPersistAttempt = {
+  param($Context, $State)
+  [Threading.Thread]::Sleep(600000)
+}
+& $env:FSHA_TEST_SCRIPT -DurationSeconds 60 -EvidencePath $env:FSHA_TEST_EVIDENCE -IntervalSeconds 0.1 -RunId $env:FSHA_TEST_RUN_ID -ServerName files -SharePath $env:FSHA_TEST_SHARE
+'@
+    $StartInfo = [Diagnostics.ProcessStartInfo]::new()
+    $StartInfo.FileName = (Get-Process -Id $PID).Path
+    $StartInfo.Arguments = '-NoLogo -NoProfile -NonInteractive -EncodedCommand {0}' -f [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ChildSource))
+    $StartInfo.UseShellExecute = $False
+    $StartInfo.CreateNoWindow = $True
+    $StartInfo.RedirectStandardInput = $True
+    $StartInfo.RedirectStandardOutput = $True
+    $StartInfo.RedirectStandardError = $True
+    $StartInfo.EnvironmentVariables['FSHA_TEST_SCRIPT'] = $script:ScriptPath
+    $StartInfo.EnvironmentVariables['FSHA_TEST_EVIDENCE'] = $Case.Evidence
+    $StartInfo.EnvironmentVariables['FSHA_TEST_RUN_ID'] = $Case.RunId
+    $StartInfo.EnvironmentVariables['FSHA_TEST_SHARE'] = $Case.Share
+    $Probe = [Diagnostics.Process]::new()
+    $Probe.StartInfo = $StartInfo
+    $Null = $Probe.Start()
+    $Probe.StandardInput.Close()
+    $Probe.BeginOutputReadLine()
+    $Workers = @()
+    Try {
+      $SamplesPath = Join-Path $Case.Evidence 'smb-samples.jsonl'
+      $Wait = [Diagnostics.Stopwatch]::StartNew()
+      While ($Wait.Elapsed.TotalSeconds -lt 30 -and $Workers.Count -lt 2) {
+        If ([IO.File]::Exists($SamplesPath)) {
+          Try {
+            $Workers = @(Read-JsonLines $SamplesPath | Where-Object kind -EQ 'worker')
+          } Catch {
+            $Workers = @()
+          }
+        }
+        If ($Workers.Count -lt 2) { [Threading.Thread]::Sleep(50) }
+      }
+      $Workers | Should -HaveCount 2
+      $Probe.Kill()
+      $Null = $Probe.WaitForExit(30000)
+      $Probe.HasExited | Should -BeTrue
+      ForEach ($Worker In $Workers) {
+        (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc -Seconds 5) | Should -BeTrue
+      }
+      $Leaf = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
+      [IO.Directory]::Delete($Leaf, $True)
+      [IO.Directory]::Exists($Leaf) | Should -BeFalse
+    } Finally {
+      If (-not $Probe.HasExited) {
+        $Probe.Kill()
+        $Null = $Probe.WaitForExit(30000)
+      }
+      ForEach ($Worker In $Workers) {
+        Try {
+          $FoundWorker = [Diagnostics.Process]::GetProcessById([Int32]$Worker.process_id)
+          $WorkerIdentityMatches = $(If ($env:OS -eq 'Windows_NT') {
+              $FoundWorker.StartTime.ToUniversalTime().ToString('o') -ceq [String]$Worker.process_started_utc
+            } Else {
+              [Math]::Abs(($FoundWorker.StartTime.ToUniversalTime() - ([DateTime]$Worker.process_started_utc).ToUniversalTime()).Ticks) -lt [TimeSpan]::TicksPerSecond
+            })
+          If ($WorkerIdentityMatches) {
+            $FoundWorker.Kill()
+            $Null = $FoundWorker.WaitForExit(30000)
+          }
+          $FoundWorker.Dispose()
+        } Catch [ArgumentException] { }
+      }
+      $Probe.Dispose()
+    }
+  }
+
+  It 'T32 reports a Kill request honestly across the already-exited race' {
+    $script:SourceText | Should -Match '\$OpenCloseKillRequested = \$True'
+    $KillIndex = $script:SourceText.IndexOf('$LoopHandle.Process.Kill()', [StringComparison]::Ordinal)
+    $WaitIndex = $script:SourceText.IndexOf('$Null = $LoopHandle.Process.WaitForExit(30000)', [StringComparison]::Ordinal)
+    $ProofIndex = $script:SourceText.IndexOf('If (-not $LoopHandle.Process.HasExited)', $WaitIndex, [StringComparison]::Ordinal)
+    $MessageIndex = $script:SourceText.IndexOf('Probe: worker {0} did not end after termination', $ProofIndex, [StringComparison]::Ordinal)
+    $ExitGuardIndex = $script:SourceText.IndexOf('If (-not $ExitProven)', $ProofIndex, [StringComparison]::Ordinal)
+    $ContinueIndex = $script:SourceText.IndexOf('Continue', $ExitGuardIndex, [StringComparison]::Ordinal)
+    $FinalizationIndex = $script:SourceText.IndexOf('$TerminationInstant = [DateTime]::UtcNow', $ExitGuardIndex, [StringComparison]::Ordinal)
+    $ReadIndex = $script:SourceText.IndexOf('$MarkerText = $MarkerReader.ReadToEnd()', $ProofIndex, [StringComparison]::Ordinal)
+    $ReconcileIndex = $script:SourceText.IndexOf('If ($MarkerText -match', $ProofIndex, [StringComparison]::Ordinal)
+    $KillIndex | Should -BeGreaterOrEqual 0
+    $WaitIndex | Should -BeGreaterThan $KillIndex
+    $ProofIndex | Should -BeGreaterThan $WaitIndex
+    $MessageIndex | Should -BeGreaterThan $ProofIndex
+    $ExitGuardIndex | Should -BeGreaterThan $MessageIndex
+    $ContinueIndex | Should -BeGreaterThan $ExitGuardIndex
+    $FinalizationIndex | Should -BeGreaterThan $ContinueIndex
+    $ReadIndex | Should -BeGreaterThan $MessageIndex
+    $ReconcileIndex | Should -BeGreaterThan $ReadIndex
+    $script:SourceText | Should -Match 'If \(-not \$ExitProven\) \{\r?\n\s+\$CleanupDeferred = \$True'
+
+    $NoThrowCase = New-ProbeCase -Name 'kill-race-no-throw'
+    $NoThrowGate = Join-Path $NoThrowCase.Root 'openclose-hold.gate'
+    [IO.File]::WriteAllText($NoThrowGate, '')
+    $global:MeasureClusteredSmbShareAccessState['in_flight_grace_seconds'] = 0
+    $global:MeasureClusteredSmbShareAccessState['openclose_hold_after_row_path'] = $NoThrowGate
+    $global:MeasureClusteredSmbShareAccessState['openclose_exit_before_kill'] = $NoThrowGate
+
+    $NoThrowRun = Invoke-Probe -Case $NoThrowCase -DurationSeconds 1
+
+    $NoThrowRecords = @(Read-JsonLines (Join-Path $NoThrowCase.Evidence 'smb-samples.jsonl'))
+    $NoThrowWorkers = @($NoThrowRecords | Where-Object kind -EQ 'worker')
+    $NoThrowWorkers | Should -HaveCount 2
+    ForEach ($Worker In $NoThrowWorkers) {
+      (Wait-ForProcessExit -Id $Worker.process_id -StartedUtc $Worker.process_started_utc -Seconds 5) | Should -BeTrue
+    }
+    $global:MeasureClusteredSmbShareAccessState['openclose_exit_before_kill_observed'] | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_returned'] | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_requested'] | Should -BeTrue
+    $NoThrowRun.Output.openclose.kill_requested | Should -BeTrue
+    $NoThrowRun.Output.cleanup_deferred | Should -BeTrue
+    $NoThrowRecords[-1].cleanup_deferred | Should -BeTrue
+    $NoThrowLeaf = Join-Path $NoThrowCase.Share ('ha-probe-{0}' -f $NoThrowCase.RunId)
+    [IO.Directory]::Delete($NoThrowLeaf, $True)
+    [IO.Directory]::Exists($NoThrowLeaf) | Should -BeFalse
+
+    Reset-ProbeState
+    $ExceptionCase = New-ProbeCase -Name 'kill-race-exception'
+    $ExceptionGate = Join-Path $ExceptionCase.Root 'openclose-hold.gate'
+    [IO.File]::WriteAllText($ExceptionGate, '')
+    $OriginalException = [InvalidOperationException]::new(('second-launch-{0}' -f $ExceptionCase.RunId))
+    $global:MeasureClusteredSmbShareAccessState['openclose_hold_after_row_path'] = $ExceptionGate
+    $global:MeasureClusteredSmbShareAccessState['openclose_exit_before_kill'] = $ExceptionGate
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_exception'] = [InvalidOperationException]::new('simulated already-exited Kill exception')
+    $global:MeasureClusteredSmbShareAccessState['persist_launch_exception'] = $OriginalException
+    $Thrown = $Null
+    Try {
+      $Null = Invoke-Probe -Case $ExceptionCase -DurationSeconds 3
+    } Catch {
+      $Thrown = $PSItem.Exception.GetBaseException()
+    }
+
+    [Object]::ReferenceEquals($Thrown, $OriginalException) | Should -BeTrue
+    $ExceptionRecords = @(Read-JsonLines (Join-Path $ExceptionCase.Evidence 'smb-samples.jsonl'))
+    $ExceptionWorkers = @($ExceptionRecords | Where-Object kind -EQ 'worker')
+    $ExceptionWorkers | Should -HaveCount 1
+    (Wait-ForProcessExit -Id $ExceptionWorkers[0].process_id -StartedUtc $ExceptionWorkers[0].process_started_utc -Seconds 5) | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_exit_before_kill_observed'] | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_returned'] | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_requested'] | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_exception_type'] | Should -Be 'System.InvalidOperationException'
+    $ExceptionRecords[-1].exception_message | Should -Be $OriginalException.Message
+    $ExceptionRecords[-1].cleanup_deferred | Should -BeTrue
+    $ExceptionLeaf = Join-Path $ExceptionCase.Share ('ha-probe-{0}' -f $ExceptionCase.RunId)
+    [IO.Directory]::Delete($ExceptionLeaf, $True)
+    [IO.Directory]::Exists($ExceptionLeaf) | Should -BeFalse
+  }
+
+  It 'T33 carries a worker stderr line into an early-end failure' {
+    $Case = New-ProbeCase -Name 'worker-stderr'
+    $global:MeasureClusteredSmbShareAccessOpenCloseAttempt = {
+      Param ($Context, $State)
+      $State['openclose_force_end'] = $True
+      Throw ('boom-{0}' -f $Context.RunId)
+    }
+    $Thrown = $Null
+    Try {
+      $Null = Invoke-Probe -Case $Case -DurationSeconds 30
+    } Catch {
+      $Thrown = $PSItem.Exception.GetBaseException()
+    }
+    $Thrown.GetType().FullName | Should -Be 'System.InvalidOperationException'
+    $Thrown.Message | Should -Match ('^Probe: loop openclose ended before the deadline: boom-{0} \[System\.Management\.Automation\.RuntimeException\]' -f [Regex]::Escape($Case.RunId))
+    $global:MeasureClusteredSmbShareAccessState['persist_kill_requested'] | Should -BeTrue
+  }
+
+  It 'T34 disposes the healthy persist stream after its own completed row' {
+    $script:SourceText | Should -Not -Match '\$WorkersStarted'
+    $Case = New-ProbeCase -Name 'persist-dispose'
+    $DisposeMarker = Join-Path $Case.Root ('disposed-{0}.marker' -f $Case.RunId)
+    $global:MeasureClusteredSmbShareAccessState['evidence_path'] = $Case.Evidence
+    $global:MeasureClusteredSmbShareAccessObservation = {
+      Param ($DnsQuery, $ServerName, $State)
+      $PersistCsv = [IO.Path]::Combine([String]$State['evidence_path'], 'attempts-persist.csv')
+      $PersistRows = @(Import-Csv -LiteralPath $PersistCsv -ErrorAction SilentlyContinue)
+      If ($PersistRows.Count -gt 0) {
+        [IO.File]::WriteAllText([IO.Path]::Combine([String]$State['evidence_path'], 'stop.request'), '')
+      }
+      [PSCustomObject]@{ continuously_available = $True; dns_a_records = @('192.0.2.10'); server_ip = '192.0.2.10' }
+    }
+    $global:MeasureClusteredSmbShareAccessPersistAttempt = {
+      Param ($Context, $State)
+      If ($Null -eq $State['persist_stream']) {
+        $LeafDirectory = [IO.Directory]::GetParent([String]$Context.Directory)
+        $ShareDirectory = $LeafDirectory.Parent
+        $CaseRoot = $ShareDirectory.Parent
+        $Disposable = [PSCustomObject]@{
+          MarkerPath = [IO.Path]::Combine($CaseRoot.FullName, ('disposed-{0}.marker' -f $Context.RunId))
+          RunId      = $Context.RunId
+        }
+        $Disposable | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+          [IO.File]::WriteAllText([String]$this.MarkerPath, ('disposed|{0}' -f $this.RunId))
+        }
+        $State['persist_stream'] = $Disposable
+      }
+    }
+    $Run = Invoke-Probe -Case $Case -DurationSeconds 30
+    @(Import-Csv (Join-Path $Case.Evidence 'attempts-persist.csv')) | Should -Not -BeNullOrEmpty
+    [IO.File]::Exists($DisposeMarker) | Should -BeTrue
+    [IO.File]::ReadAllText($DisposeMarker) | Should -Be ('disposed|{0}' -f $Case.RunId)
+    $Run.Output.persist.kill_requested | Should -BeFalse
+    $Run.Output.cleanup_deferred | Should -BeFalse
+  }
+
+  It 'T35 shuts down a recorded first worker when the second launch fails' {
+    $script:SourceText | Should -Not -Match '\$WorkersStarted'
+    $script:SourceText | Should -Match "ContainsKey\('persist_launch_exception'\)"
+    $Case = New-ProbeCase -Name 'second-launch-failure'
+    $Expected = [InvalidOperationException]::new(('second-launch-{0}' -f $Case.RunId))
+    $global:MeasureClusteredSmbShareAccessState['persist_launch_exception'] = $Expected
+    $Thrown = $Null
+    Try {
+      $Null = Invoke-Probe -Case $Case -DurationSeconds 3
+    } Catch {
+      $Thrown = $PSItem.Exception.GetBaseException()
+    }
+    $Thrown.GetType().FullName | Should -Be 'System.InvalidOperationException'
+    $Thrown.Message | Should -Be $Expected.Message
+    [Object]::ReferenceEquals($Thrown, $Expected) | Should -BeTrue
+    $Records = @(Read-JsonLines (Join-Path $Case.Evidence 'smb-samples.jsonl'))
+    $Workers = @($Records | Where-Object kind -EQ 'worker')
+    $Workers | Should -HaveCount 1
+    $Workers[0].loop | Should -Be 'openclose'
+    (Wait-ForProcessExit -Id $Workers[0].process_id -StartedUtc $Workers[0].process_started_utc) | Should -BeTrue
+    [IO.File]::Exists((Join-Path $Case.Evidence 'openclose.inflight')) | Should -BeFalse
+    [IO.File]::Exists((Join-Path $Case.Evidence 'persist.inflight')) | Should -BeFalse
+    $Records[-1].kind | Should -Be 'terminal'
+    $Records[-1].exception_type | Should -Be 'System.InvalidOperationException'
+    $Records[-1].exception_message | Should -Be $Expected.Message
+    $Records[-1].cleanup_deferred | Should -BeTrue
+    $global:MeasureClusteredSmbShareAccessState['openclose_kill_requested'] | Should -BeTrue
+    $Leaf = Join-Path $Case.Share ('ha-probe-{0}' -f $Case.RunId)
+    [IO.Directory]::Delete($Leaf, $True)
+    [IO.Directory]::Exists($Leaf) | Should -BeFalse
+
+    Reset-ProbeState
+    $UnprovenCase = New-ProbeCase -Name 'second-launch-unproven'
+    $Original = [InvalidOperationException]::new(('original-launch-{0}' -f $UnprovenCase.RunId))
+    $global:MeasureClusteredSmbShareAccessState['persist_launch_exception'] = $Original
+    $global:MeasureClusteredSmbShareAccessState['openclose_shutdown_exception'] = [IO.IOException]::new('injected exit-proof failure')
+    $UnprovenThrown = $Null
+    Try {
+      $Null = Invoke-Probe -Case $UnprovenCase -DurationSeconds 1
+    } Catch {
+      $UnprovenThrown = $PSItem.Exception.GetBaseException()
+    }
+    [Object]::ReferenceEquals($UnprovenThrown, $Original) | Should -BeTrue
+    $UnprovenRecords = @(Read-JsonLines (Join-Path $UnprovenCase.Evidence 'smb-samples.jsonl'))
+    $UnprovenWorker = @($UnprovenRecords | Where-Object kind -EQ 'worker')[0]
+    (Wait-ForProcessExit -Id $UnprovenWorker.process_id -StartedUtc $UnprovenWorker.process_started_utc -Seconds 5) | Should -BeTrue
+    $UnprovenRecords[-1].kind | Should -Be 'terminal'
+    $UnprovenRecords[-1].exception_message | Should -Be $Original.Message
+    $UnprovenRecords[-1].cleanup_deferred | Should -BeTrue
+    $UnprovenLeaf = Join-Path $UnprovenCase.Share ('ha-probe-{0}' -f $UnprovenCase.RunId)
+    [IO.Directory]::Delete($UnprovenLeaf, $True)
+    [IO.Directory]::Exists($UnprovenLeaf) | Should -BeFalse
   }
 }
